@@ -10,9 +10,19 @@ const PORT = process.env.PORT || 3001;
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
-  ...(process.env.APP_URL ? [process.env.APP_URL] : []),
+  ...(process.env.APP_URL
+    ? process.env.APP_URL.split(',').map(u => u.trim()).filter(Boolean)
+    : []),
 ];
-app.use(cors({ origin: ALLOWED_ORIGINS }));
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // Permite requisições sem origin (ex: Postman, curl) e origins na lista
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS bloqueado: ${origin}`));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // Rotas
