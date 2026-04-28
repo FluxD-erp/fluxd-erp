@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Plus, Shield, UserCheck, UserX, Edit2, Mail, ChevronDown } from 'lucide-react';
+import { Plus, Shield, UserCheck, UserX, Edit2, Mail, ChevronDown, RefreshCw, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
+
+async function getAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const apiBase = import.meta.env.VITE_API_URL ?? '';
+  return { apiBase, headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${session?.access_token}`,
+  }};
+}
 
 const PERFIS = [
   { value: 'ADMIN',       label: 'Admin',        desc: 'Acesso total, incluindo usuários e logs' },
@@ -149,12 +158,15 @@ export default function GestaoAcessos() {
 
   async function carregar() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('criado_em', { ascending: false });
-    if (error) toast.error('Erro ao carregar usuários.');
-    else setUsers(data ?? []);
+    try {
+      const { apiBase, headers } = await getAuthHeaders();
+      const res = await fetch(`${apiBase}/api/admin/users`, { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setUsers(data);
+    } catch (e) {
+      toast.error('Erro ao carregar usuários: ' + e.message);
+    }
     setLoading(false);
   }
 
@@ -176,8 +188,24 @@ export default function GestaoAcessos() {
     }
   }
 
-  const ativos   = users.filter(u => u.ativo).length;
-  const inativos = users.filter(u => !u.ativo).length;
+  async function reenviarConvite(user) {
+    try {
+      const { apiBase, headers } = await getAuthHeaders();
+      const res = await fetch(`${apiBase}/api/admin/resend-invite`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ email: user.email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(`Convite reenviado para ${user.email}`);
+    } catch (e) {
+      toast.error('Erro ao reenviar convite: ' + e.message);
+    }
+  }
+
+  const ativos    = users.filter(u => u.ativo).length;
+  const inativos  = users.filter(u => !u.ativo).length;
+  const pendentes = users.filter(u => !u.confirmado).length;
 
   return (
     <div>
@@ -192,7 +220,7 @@ export default function GestaoAcessos() {
       />
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="card p-4 border-l-4 border-unicri-orange">
           <div className="text-xs text-gray-500 mb-1">Total de usuários</div>
           <div className="text-2xl font-bold text-unicri-navy">{users.length}</div>
@@ -204,6 +232,10 @@ export default function GestaoAcessos() {
         <div className="card p-4 border-l-4 border-gray-300">
           <div className="text-xs text-gray-500 mb-1">Inativos</div>
           <div className="text-2xl font-bold text-gray-400">{inativos}</div>
+        </div>
+        <div className="card p-4 border-l-4 border-amber-400">
+          <div className="text-xs text-gray-500 mb-1">Convite pendente</div>
+          <div className="text-2xl font-bold text-amber-500">{pendentes}</div>
         </div>
       </div>
 
@@ -241,27 +273,40 @@ export default function GestaoAcessos() {
                   <EditPerfilDropdown userId={u.id} currentPerfil={u.perfil} onUpdated={carregar} />
                 </td>
                 <td className="px-5 py-3">
-                  {u.ativo
-                    ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><UserCheck size={12}/> Ativo</span>
-                    : <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-400"><UserX size={12}/> Inativo</span>
+                  {!u.confirmado
+                    ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600"><Clock size={12}/> Pendente</span>
+                    : u.ativo
+                      ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><UserCheck size={12}/> Ativo</span>
+                      : <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-400"><UserX size={12}/> Inativo</span>
                   }
                 </td>
                 <td className="px-5 py-3 text-gray-400 text-xs">
                   {new Date(u.criado_em).toLocaleDateString('pt-BR')}
                 </td>
                 <td className="px-5 py-3 text-right">
-                  {u.id !== me?.id && (
-                    <button
-                      onClick={() => toggleAtivo(u)}
-                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors
-                        ${u.ativo
-                          ? 'border-red-200 text-red-500 hover:bg-red-50'
-                          : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'
-                        }`}
-                    >
-                      {u.ativo ? 'Desativar' : 'Reativar'}
-                    </button>
-                  )}
+                  <div className="inline-flex gap-2 items-center">
+                    {!u.confirmado && (
+                      <button
+                        onClick={() => reenviarConvite(u)}
+                        className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50 transition-colors"
+                        title="Reenviar e-mail de convite"
+                      >
+                        <RefreshCw size={12}/> Reenviar convite
+                      </button>
+                    )}
+                    {u.id !== me?.id && (
+                      <button
+                        onClick={() => toggleAtivo(u)}
+                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors
+                          ${u.ativo
+                            ? 'border-red-200 text-red-500 hover:bg-red-50'
+                            : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'
+                          }`}
+                      >
+                        {u.ativo ? 'Desativar' : 'Reativar'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

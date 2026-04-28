@@ -11,15 +11,27 @@ const { requireAuth, requireRole, supabaseAdmin } = require('../middleware/auth'
 router.use(requireAuth, requireRole('ADMIN'));
 
 // ----------------------------------------------------------------
-// GET /api/admin/users — lista todos os profiles
+// GET /api/admin/users — lista profiles enriquecidos com status de confirmação
 // ----------------------------------------------------------------
 router.get('/users', async (req, res) => {
-  const { data, error } = await supabaseAdmin
-    .from('profiles')
-    .select('*')
-    .order('criado_em', { ascending: false });
+  const [profilesResult, authResult] = await Promise.all([
+    supabaseAdmin.from('profiles').select('*').order('criado_em', { ascending: false }),
+    supabaseAdmin.auth.admin.listUsers({ perPage: 1000 }),
+  ]);
 
-  if (error) return res.status(500).json({ error: error.message });
+  if (profilesResult.error) return res.status(500).json({ error: profilesResult.error.message });
+
+  // Mapeia confirmação por ID
+  const authMap = {};
+  (authResult.data?.users || []).forEach(u => {
+    authMap[u.id] = !!u.email_confirmed_at;
+  });
+
+  const data = (profilesResult.data || []).map(p => ({
+    ...p,
+    confirmado: authMap[p.id] ?? false,
+  }));
+
   res.json(data);
 });
 
@@ -65,6 +77,28 @@ router.post('/invite-user', async (req, res) => {
     userId  : data.user.id,
     message : `Convite enviado para ${email}`,
   });
+});
+
+// ----------------------------------------------------------------
+// POST /api/admin/resend-invite — reenvia e-mail de convite
+// Body: { email }
+// ----------------------------------------------------------------
+router.post('/resend-invite', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'E-mail obrigatório.' });
+
+  const appUrl = process.env.APP_URL || 'http://localhost:5173';
+
+  const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${appUrl}/definir-senha`,
+  });
+
+  // "already been registered" significa que o usuário já confirmou — não é erro aqui
+  if (error && !error.message.includes('already been registered')) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ success: true, message: `Convite reenviado para ${email}` });
 });
 
 // ----------------------------------------------------------------
