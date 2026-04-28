@@ -5,13 +5,7 @@
  *   router.post('/lancamentos', requireAuth, requireRole('FINANCEIRO'), handler);
  */
 
-const { createClient } = require('@supabase/supabase-js');
-
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL            || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const { db: supabaseAdmin } = require('../db/supabase');
 
 /**
  * Valida o JWT do Supabase e coloca req.user com os dados do usuário.
