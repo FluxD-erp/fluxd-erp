@@ -1,0 +1,31 @@
+# Dependências
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Variáveis de ambiente (nunca versionar)
+.env
+client/.env
+server/.env
+
+# Banco de dados local (cada dev tem o seu)
+server/unicri.db
+*.db
+
+# Build do frontend
+client/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Claude Code (configurações locais da máquina)
+.claude/

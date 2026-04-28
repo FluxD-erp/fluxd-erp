@@ -1,0 +1,270 @@
+import { useEffect, useState } from 'react';
+import { Plus, Search, CheckCircle, Filter } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { api, fmt, fmtData } from '../services/api';
+import PageHeader from '../components/PageHeader';
+import Modal from '../components/Modal';
+
+const STATUS_OPTIONS = ['', 'ABERTA', 'PAGA', 'VENCIDA', 'PARCIAL', 'CANCELADA'];
+
+function StatusBadge({ status }) {
+  const map = {
+    ABERTA: 'badge-pendente', PAGA: 'badge-pago', VENCIDA: 'badge-vencido',
+    PARCIAL: 'badge-parcial', CANCELADA: 'badge-cancelado',
+  };
+  return <span className={map[status] || 'badge-pendente'}>{status}</span>;
+}
+
+function FormConta({ onSave, onClose, fornecedores, planoContas }) {
+  const [form, setForm] = useState({
+    fornecedor_id: '', descricao: '', valor_original: '',
+    data_emissao: new Date().toISOString().split('T')[0],
+    data_vencimento: '', numero_documento: '', observacao: '',
+  });
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.fornecedor_id || !form.descricao || !form.valor_original || !form.data_vencimento)
+      return toast.error('Preencha todos os campos obrigatórios');
+    try {
+      await api.financeiro.criarContaPagar({ ...form, valor_original: parseFloat(form.valor_original) });
+      toast.success('Conta a pagar cadastrada!');
+      onSave();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2">
+          <label className="label">Fornecedor *</label>
+          <select className="input" value={form.fornecedor_id} onChange={e => set('fornecedor_id', e.target.value)} required>
+            <option value="">Selecione...</option>
+            {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label">Descrição *</label>
+          <input className="input" value={form.descricao} onChange={e => set('descricao', e.target.value)} required />
+        </div>
+        <div>
+          <label className="label">Valor Original (R$) *</label>
+          <input className="input" type="number" step="0.01" min="0.01" value={form.valor_original}
+            onChange={e => set('valor_original', e.target.value)} required />
+        </div>
+        <div>
+          <label className="label">Nº Documento</label>
+          <input className="input" value={form.numero_documento} onChange={e => set('numero_documento', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Data Emissão *</label>
+          <input className="input" type="date" value={form.data_emissao} onChange={e => set('data_emissao', e.target.value)} required />
+        </div>
+        <div>
+          <label className="label">Data Vencimento *</label>
+          <input className="input" type="date" value={form.data_vencimento} onChange={e => set('data_vencimento', e.target.value)} required />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label">Conta Contábil</label>
+          <select className="input" value={form.conta_id || ''} onChange={e => set('conta_id', e.target.value)}>
+            <option value="">Nenhuma</option>
+            {planoContas.filter(c => c.tipo === 'DESPESA').map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="label">Observação</label>
+          <textarea className="input" rows={2} value={form.observacao} onChange={e => set('observacao', e.target.value)} />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+        <button type="submit" className="btn-primary">Salvar Conta</button>
+      </div>
+    </form>
+  );
+}
+
+function ModalPagar({ conta, onClose, onSave }) {
+  const [valor, setValor] = useState('');
+  const [data, setData] = useState(new Date().toISOString().split('T')[0]);
+  const restante = (conta?.valor_original || 0) - (conta?.valor_pago || 0);
+
+  const handlePagar = async () => {
+    const v = parseFloat(valor);
+    if (!v || v <= 0) return toast.error('Informe o valor pago');
+    if (v > restante) return toast.error(`Valor máximo: ${fmt(restante)}`);
+    try {
+      await api.financeiro.pagarConta(conta.id, { valor_pago: v, data_pagamento: data });
+      toast.success('Pagamento registrado!');
+      onSave();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  return (
+    <Modal open={!!conta} onClose={onClose} title="Registrar Pagamento" size="sm">
+      {conta && (
+        <div className="space-y-4">
+          <div className="bg-gray-50 rounded-xl p-4 space-y-1 text-sm">
+            <div className="font-semibold text-gray-800">{conta.descricao}</div>
+            <div className="text-gray-500">Fornecedor: {conta.fornecedor_nome}</div>
+            <div className="flex justify-between mt-2 pt-2 border-t border-gray-200">
+              <span className="text-gray-500">Valor original</span>
+              <span className="font-semibold">{fmt(conta.valor_original)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Já pago</span>
+              <span className="font-semibold text-emerald-600">{fmt(conta.valor_pago)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-unicri-orange">
+              <span>Restante</span>
+              <span>{fmt(restante)}</span>
+            </div>
+          </div>
+          <div>
+            <label className="label">Valor a pagar (R$) *</label>
+            <input className="input" type="number" step="0.01" min="0.01" max={restante}
+              value={valor} onChange={e => setValor(e.target.value)} placeholder={fmt(restante)} />
+          </div>
+          <div>
+            <label className="label">Data do pagamento *</label>
+            <input className="input" type="date" value={data} onChange={e => setData(e.target.value)} />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button className="btn-secondary" onClick={onClose}>Cancelar</button>
+            <button className="btn-primary" onClick={handlePagar}>
+              <CheckCircle size={16} /> Confirmar Pagamento
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+export default function ContasPagar() {
+  const [contas, setContas] = useState([]);
+  const [fornecedores, setFornecedores] = useState([]);
+  const [planoContas, setPlanoContas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [pagando, setPagando] = useState(null);
+  const [filtros, setFiltros] = useState({ status: '', search: '' });
+
+  const carregar = async () => {
+    setLoading(true);
+    const params = {};
+    if (filtros.status) params.status = filtros.status;
+    if (filtros.search) params.search = filtros.search;
+    const [c, f, p] = await Promise.all([
+      api.financeiro.contasPagar(params),
+      api.fornecedores.listar({ ativo: 'true' }),
+      api.financeiro.planoContas(),
+    ]);
+    setContas(c); setFornecedores(f); setPlanoContas(p);
+    setLoading(false);
+  };
+
+  useEffect(() => { carregar(); }, [filtros]);
+
+  const totalAberto = contas.filter(c => ['ABERTA','PARCIAL'].includes(c.status)).reduce((s, c) => s + c.valor_original - c.valor_pago, 0);
+  const totalVencido = contas.filter(c => c.status === 'VENCIDA').reduce((s, c) => s + c.valor_original - c.valor_pago, 0);
+
+  return (
+    <div>
+      <PageHeader
+        title="Contas a Pagar"
+        subtitle="Gerencie seus compromissos financeiros"
+        actions={
+          <button className="btn-primary" onClick={() => setShowForm(true)}>
+            <Plus size={16} /> Nova Conta
+          </button>
+        }
+      />
+
+      {/* Resumo */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: 'Total em Aberto', value: fmt(totalAberto), color: 'text-yellow-600' },
+          { label: 'Total Vencido', value: fmt(totalVencido), color: 'text-red-600' },
+          { label: 'Contas Abertas', value: contas.filter(c => c.status === 'ABERTA').length, color: 'text-gray-800' },
+          { label: 'Vencidas', value: contas.filter(c => c.status === 'VENCIDA').length, color: 'text-red-600' },
+        ].map((s, i) => (
+          <div key={i} className="card p-4">
+            <div className="text-xs text-gray-500 mb-1">{s.label}</div>
+            <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtros */}
+      <div className="card p-4 mb-4 flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input className="input pl-8" placeholder="Buscar descrição ou fornecedor..."
+            value={filtros.search} onChange={e => setFiltros(f => ({ ...f, search: e.target.value }))} />
+        </div>
+        <select className="input w-auto" value={filtros.status} onChange={e => setFiltros(f => ({ ...f, status: e.target.value }))}>
+          {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s || 'Todos os status'}</option>)}
+        </select>
+      </div>
+
+      {/* Tabela */}
+      <div className="card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
+              <th className="px-5 py-3">Descrição</th>
+              <th className="px-5 py-3">Fornecedor</th>
+              <th className="px-5 py-3">Vencimento</th>
+              <th className="px-5 py-3 text-right">Valor</th>
+              <th className="px-5 py-3 text-right">Pago</th>
+              <th className="px-5 py-3">Status</th>
+              <th className="px-5 py-3" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {loading ? (
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Carregando...</td></tr>
+            ) : contas.length === 0 ? (
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Nenhuma conta encontrada</td></tr>
+            ) : contas.map(c => (
+              <tr key={c.id} className={`hover:bg-gray-50/50 transition-colors ${c.status === 'VENCIDA' ? 'bg-red-50/30' : ''}`}>
+                <td className="px-5 py-3 font-medium text-gray-800 max-w-xs">
+                  <div className="truncate">{c.descricao}</div>
+                  {c.numero_documento && <div className="text-xs text-gray-400">Doc: {c.numero_documento}</div>}
+                </td>
+                <td className="px-5 py-3 text-gray-600">{c.fornecedor_nome}</td>
+                <td className={`px-5 py-3 ${c.status === 'VENCIDA' ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
+                  {fmtData(c.data_vencimento)}
+                </td>
+                <td className="px-5 py-3 text-right font-semibold">{fmt(c.valor_original)}</td>
+                <td className="px-5 py-3 text-right text-emerald-600">{fmt(c.valor_pago)}</td>
+                <td className="px-5 py-3"><StatusBadge status={c.status} /></td>
+                <td className="px-5 py-3">
+                  {['ABERTA','PARCIAL','VENCIDA'].includes(c.status) && (
+                    <button className="btn-primary py-1 px-3 text-xs" onClick={() => setPagando(c)}>
+                      <CheckCircle size={13} /> Pagar
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Nova Conta a Pagar">
+        <FormConta
+          fornecedores={fornecedores}
+          planoContas={planoContas}
+          onClose={() => setShowForm(false)}
+          onSave={() => { setShowForm(false); carregar(); }}
+        />
+      </Modal>
+
+      <ModalPagar conta={pagando} onClose={() => setPagando(null)} onSave={() => { setPagando(null); carregar(); }} />
+    </div>
+  );
+}

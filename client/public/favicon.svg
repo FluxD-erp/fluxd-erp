@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <!-- Fundo: gradiente navy igual ao logo -->
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#24527E"/>
+      <stop offset="100%" stop-color="#152D4A"/>
+    </linearGradient>
+    <!-- Arrow: gradiente do logo (cinza-azulado → dourado) -->
+    <linearGradient id="arrow" x1="12" y1="52" x2="52" y2="12" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#7FA8C9"/>
+      <stop offset="100%" stop-color="#C9A030"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fundo arredondado -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+
+  <!-- ══ F ══
+       Barra vertical + barra superior + barra média -->
+  <rect x="6"  y="10" width="4.5" height="44" rx="1.5" fill="white" opacity="0.95"/>
+  <rect x="6"  y="10" width="17"  height="4.5" rx="1.5" fill="white" opacity="0.95"/>
+  <rect x="6"  y="29" width="12"  height="4"   rx="1.5" fill="white" opacity="0.95"/>
+
+  <!-- ══ D ══
+       Barra vertical esquerda + curva fechada à direita -->
+  <path d="M28 10 L28 54 L38 54
+           Q57 54 57 32
+           Q57 10 38 10 Z"
+        fill="white" opacity="0.95"/>
+  <!-- Recorte interno que cria o "buraco" do D -->
+  <path d="M32.5 14.5 L38 14.5
+           Q52.5 14.5 52.5 32
+           Q52.5 49.5 38 49.5 L32.5 49.5 Z"
+        fill="url(#bg)"/>
+
+  <!-- ══ Arrow dourado ══
+       Linha diagonal de tendência + cabeça (arrowhead) -->
+  <!-- Linha principal -->
+  <line x1="10" y1="54" x2="50" y2="14"
+        stroke="url(#arrow)" stroke-width="3.5"
+        stroke-linecap="round" opacity="0.92"/>
+  <!-- Braço horizontal do arrowhead -->
+  <line x1="38" y1="14" x2="50" y2="14"
+        stroke="url(#arrow)" stroke-width="3.5"
+        stroke-linecap="round" opacity="0.92"/>
+  <!-- Braço vertical do arrowhead -->
+  <line x1="50" y1="14" x2="50" y2="26"
+        stroke="url(#arrow)" stroke-width="3.5"
+        stroke-linecap="round" opacity="0.92"/>
+</svg>
