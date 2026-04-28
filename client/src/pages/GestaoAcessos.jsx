@@ -38,9 +38,14 @@ function InviteModal({ onClose, onSaved }) {
     setBusy(true);
 
     // Chama o endpoint do servidor (usa a service_role key com segurança)
-    const res = await fetch('/api/admin/invite-user', {
+    const { data: { session } } = await supabase.auth.getSession();
+    const apiBase = import.meta.env.VITE_API_URL ?? '';
+    const res = await fetch(`${apiBase}/api/admin/invite-user`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`,
+      },
       body: JSON.stringify(form),
     });
     const data = await res.json();
