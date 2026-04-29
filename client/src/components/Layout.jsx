@@ -4,7 +4,7 @@ import {
   LayoutDashboard, TrendingUp, TrendingDown, ArrowLeftRight,
   Users, Truck, FileText, BarChart2, Menu, X, ChevronRight,
   Bell, Settings, LogOut, AlertTriangle, CalendarDays,
-  ShieldCheck, ScrollText, Building2, ChevronDown, Plus, Check,
+  Building2, ChevronDown, Plus, Check,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -28,12 +28,6 @@ const NAV = [
   },
   { label: 'Passivos Especiais', icon: AlertTriangle, to: '/passivos' },
   { label: 'Relatórios',         icon: BarChart2,     to: '/relatorios' },
-  {
-    label: 'Administração', icon: ShieldCheck, adminOnly: true, children: [
-      { label: 'Gestão de Acessos', icon: Users,      to: '/gestao-acessos' },
-      { label: 'Logs de Sistema',   icon: ScrollText, to: '/audit-log' },
-    ],
-  },
 ];
 
 function NavItem({ item, collapsed, depth = 0 }) {
@@ -221,7 +215,10 @@ export default function Layout({ children }) {
             <div className="text-[10px] text-gray-400 truncate">{profile.perfil}</div>
           </div>
         )}
-        <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors">
+        <button
+          onClick={() => navigate('/configuracoes')}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+        >
           <Settings size={18} />
           {!collapsed && <span>Configurações</span>}
         </button>

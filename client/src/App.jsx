@@ -25,9 +25,8 @@ import Fornecedores from './pages/Fornecedores';
 import PlanoContas from './pages/PlanoContas';
 import Passivos    from './pages/Passivos';
 
-// Páginas administrativas (somente ADMIN)
-import GestaoAcessos from './pages/GestaoAcessos';
-import AuditLog      from './pages/AuditLog';
+// Configurações (todas as seções admin inclusas)
+import Configuracoes from './pages/Configuracoes';
 
 /**
  * Guard que redireciona para /setup se o usuário não tiver empresa ativa.
@@ -97,9 +96,11 @@ export default function App() {
                     <Route path="/plano-contas"element={<ProtectedRoute requiredRole="FINANCEIRO"><PlanoContas /></ProtectedRoute>} />
                     <Route path="/passivos"    element={<ProtectedRoute requiredRole="FINANCEIRO"><Passivos /></ProtectedRoute>} />
 
-                    {/* Somente ADMIN */}
-                    <Route path="/gestao-acessos" element={<ProtectedRoute requiredRole="ADMIN"><GestaoAcessos /></ProtectedRoute>} />
-                    <Route path="/audit-log"      element={<ProtectedRoute requiredRole="ADMIN"><AuditLog /></ProtectedRoute>} />
+                    {/* Configurações (acesso geral; seções admin-only controladas internamente) */}
+                    <Route path="/configuracoes"  element={<Configuracoes />} />
+                    {/* Redirecionamentos de compatibilidade */}
+                    <Route path="/gestao-acessos" element={<Navigate to="/configuracoes#usuarios" replace />} />
+                    <Route path="/audit-log"      element={<Navigate to="/configuracoes#logs" replace />} />
                   </Routes>
                 </Layout>
               </EmpresaGuard>
