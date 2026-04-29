@@ -26,11 +26,12 @@ app.use(cors({
 app.use(express.json());
 
 // Rotas
-app.use('/api/dashboard', require('./routes/dashboard'));
-app.use('/api',           require('./routes/entidades'));
-app.use('/api/financeiro',require('./routes/financeiro'));
-app.use('/api/admin',     require('./routes/admin'));
-app.get('/api/health',    (req, res) => res.json({ status: 'ok' }));
+app.use('/api/dashboard',  require('./routes/dashboard'));
+app.use('/api',            require('./routes/entidades'));
+app.use('/api/financeiro', require('./routes/financeiro'));
+app.use('/api/admin',      require('./routes/admin'));
+app.use('/api/empresas',   require('./routes/empresas'));
+app.get('/api/health',     (req, res) => res.json({ status: 'ok' }));
 
 // Serve o build do frontend em produção
 const distIndex = path.join(__dirname, '../../client/dist/index.html');

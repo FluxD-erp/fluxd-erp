@@ -1,6 +1,11 @@
 const express = require('express');
 const router  = express.Router();
 const { db }  = require('../db/supabase');
+const { requireAuth }    = require('../middleware/auth');
+const { requireEmpresa } = require('../middleware/empresa');
+
+// Todas as rotas financeiras requerem auth + empresa selecionada
+router.use(requireAuth, requireEmpresa);
 
 // ----------------------------------------------------------------
 // LANÇAMENTOS
@@ -11,6 +16,7 @@ router.get('/lancamentos', async (req, res) => {
 
     let q = db.from('lancamentos')
       .select('*, clientes!cliente_id(nome), fornecedores!fornecedor_id(nome), plano_contas!conta_id(nome)')
+      .eq('empresa_id', req.empresaId)
       .order('data_competencia', { ascending: false })
       .limit(200);
 
@@ -53,6 +59,7 @@ router.post('/lancamentos', async (req, res) => {
         cliente_id     : cliente_id || null,
         fornecedor_id  : fornecedor_id || null,
         numero_documento, observacao,
+        empresa_id     : req.empresaId,
       })
       .select()
       .single();
@@ -110,6 +117,7 @@ router.get('/contas-pagar', async (req, res) => {
 
     let q = db.from('contas_pagar')
       .select('*, fornecedores!fornecedor_id(nome, cpf_cnpj)')
+      .eq('empresa_id', req.empresaId)
       .order('data_vencimento', { ascending: true });
 
     if (status) q = q.eq('status', status);
@@ -149,6 +157,7 @@ router.post('/contas-pagar', async (req, res) => {
       .insert({
         fornecedor_id, descricao, valor_original, data_emissao, data_vencimento,
         numero_documento, conta_id: conta_id || null, observacao,
+        empresa_id: req.empresaId,
       })
       .select()
       .single();
@@ -221,6 +230,7 @@ router.get('/contas-receber', async (req, res) => {
 
     let q = db.from('contas_receber')
       .select('*, clientes!cliente_id(nome, cpf_cnpj)')
+      .eq('empresa_id', req.empresaId)
       .order('data_vencimento', { ascending: true });
 
     if (status) q = q.eq('status', status);
@@ -260,6 +270,7 @@ router.post('/contas-receber', async (req, res) => {
       .insert({
         cliente_id, descricao, valor_original, data_emissao, data_vencimento,
         numero_documento, conta_id: conta_id || null, observacao,
+        empresa_id: req.empresaId,
       })
       .select()
       .single();
@@ -330,6 +341,7 @@ router.get('/plano-contas', async (req, res) => {
   try {
     const { data, error } = await db.from('plano_contas')
       .select('*')
+      .eq('empresa_id', req.empresaId)
       .eq('ativo', true)
       .order('codigo', { ascending: true });
 
@@ -353,12 +365,14 @@ router.get('/fluxo-caixa', async (req, res) => {
     const [{ data: periodo }, { data: anterior }] = await Promise.all([
       db.from('lancamentos')
         .select('data_competencia, descricao, valor, tipo, status')
+        .eq('empresa_id', req.empresaId)
         .gte('data_competencia', dataInicio)
         .lte('data_competencia', dataFim)
         .order('data_competencia', { ascending: true }),
 
       db.from('lancamentos')
         .select('tipo, valor, status')
+        .eq('empresa_id', req.empresaId)
         .eq('status', 'PAGO')
         .lt('data_competencia', dataInicio),
     ]);
@@ -391,6 +405,7 @@ router.get('/dre', async (req, res) => {
 
     const { data: rows, error } = await db.from('lancamentos')
       .select('tipo, valor, plano_contas!conta_id(codigo, nome)')
+      .eq('empresa_id', req.empresaId)
       .eq('status', 'PAGO')
       .gte('data_competencia', dataInicio)
       .lte('data_competencia', dataFim);

@@ -1,12 +1,18 @@
 const express = require('express');
 const router  = express.Router();
 const { db }  = require('../db/supabase');
+const { requireAuth }    = require('../middleware/auth');
+const { requireEmpresa } = require('../middleware/empresa');
+
+// Todas as rotas do dashboard requerem auth + empresa selecionada
+router.use(requireAuth, requireEmpresa);
 
 // ----------------------------------------------------------------
 // GET /api/dashboard/kpis
 // ----------------------------------------------------------------
 router.get('/kpis', async (req, res) => {
   try {
+    const eid       = req.empresaId;
     const hoje      = new Date().toISOString().split('T')[0];
     const inicioMes = hoje.slice(0, 7) + '-01';
     const em7Dias   = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
@@ -20,33 +26,39 @@ router.get('/kpis', async (req, res) => {
       { data: aVencerRows },
     ] = await Promise.all([
       db.from('lancamentos').select('valor')
+        .eq('empresa_id', eid)
         .eq('tipo', 'RECEITA').eq('status', 'PAGO')
         .gte('data_competencia', inicioMes).lte('data_competencia', hoje),
 
       db.from('lancamentos').select('valor')
+        .eq('empresa_id', eid)
         .eq('tipo', 'DESPESA').eq('status', 'PAGO')
         .gte('data_competencia', inicioMes).lte('data_competencia', hoje),
 
       db.from('contas_pagar').select('valor_original,valor_pago')
+        .eq('empresa_id', eid)
         .in('status', ['ABERTA', 'PARCIAL']),
 
       db.from('contas_receber').select('valor_original,valor_recebido')
+        .eq('empresa_id', eid)
         .in('status', ['ABERTA', 'PARCIAL']),
 
       db.from('contas_pagar').select('valor_original,valor_pago')
+        .eq('empresa_id', eid)
         .eq('status', 'VENCIDA'),
 
       db.from('contas_pagar').select('id')
+        .eq('empresa_id', eid)
         .eq('status', 'ABERTA')
         .gte('data_vencimento', hoje)
         .lte('data_vencimento', em7Dias),
     ]);
 
-    const sum     = (rows, field)    => (rows || []).reduce((acc, r) => acc + Number(r[field] || 0), 0);
-    const sumDiff = (rows, a, b)     => (rows || []).reduce((acc, r) => acc + Number(r[a] || 0) - Number(r[b] || 0), 0);
+    const sum     = (rows, field) => (rows || []).reduce((acc, r) => acc + Number(r[field] || 0), 0);
+    const sumDiff = (rows, a, b)  => (rows || []).reduce((acc, r) => acc + Number(r[a] || 0) - Number(r[b] || 0), 0);
 
-    const receitaMes  = sum(receitasRows, 'valor');
-    const despesaMes  = sum(despesasRows, 'valor');
+    const receitaMes = sum(receitasRows, 'valor');
+    const despesaMes = sum(despesasRows, 'valor');
 
     res.json({
       receita_mes   : receitaMes,
@@ -73,6 +85,7 @@ router.get('/fluxo-mensal', async (req, res) => {
 
     const { data: rows, error } = await db.from('lancamentos')
       .select('tipo, valor, data_competencia')
+      .eq('empresa_id', req.empresaId)
       .eq('status', 'PAGO')
       .gte('data_competencia', dataCorte);
 
@@ -105,6 +118,7 @@ router.get('/distribuicao-despesas', async (req, res) => {
 
     const { data: rows, error } = await db.from('lancamentos')
       .select('valor, descricao, plano_contas!conta_id(nome)')
+      .eq('empresa_id', req.empresaId)
       .eq('tipo', 'DESPESA').eq('status', 'PAGO')
       .gte('data_competencia', trintaDiasAtras);
 
@@ -134,6 +148,7 @@ router.get('/ultimos-lancamentos', async (req, res) => {
   try {
     const { data, error } = await db.from('lancamentos')
       .select('*, clientes!cliente_id(nome), fornecedores!fornecedor_id(nome)')
+      .eq('empresa_id', req.empresaId)
       .order('criado_em', { ascending: false })
       .limit(10);
 

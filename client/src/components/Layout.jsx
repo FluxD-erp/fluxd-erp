@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, TrendingDown, ArrowLeftRight,
   Users, Truck, FileText, BarChart2, Menu, X, ChevronRight,
   Bell, Settings, LogOut, AlertTriangle, CalendarDays,
-  ShieldCheck, ScrollText,
+  ShieldCheck, ScrollText, Building2, ChevronDown, Plus, Check,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,26 +12,26 @@ const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/' },
   {
     label: 'Financeiro', icon: ArrowLeftRight, children: [
-      { label: 'Lançamentos', icon: FileText, to: '/lancamentos' },
-      { label: 'Contas a Pagar', icon: TrendingDown, to: '/contas-pagar' },
-      { label: 'Contas a Receber', icon: TrendingUp, to: '/contas-receber' },
-      { label: 'Fluxo de Caixa', icon: BarChart2, to: '/fluxo-caixa' },
-      { label: 'Prog. da Semana', icon: CalendarDays, to: '/programacao-semana' },
+      { label: 'Lançamentos',     icon: FileText,      to: '/lancamentos' },
+      { label: 'Contas a Pagar',  icon: TrendingDown,  to: '/contas-pagar' },
+      { label: 'Contas a Receber',icon: TrendingUp,    to: '/contas-receber' },
+      { label: 'Fluxo de Caixa',  icon: BarChart2,     to: '/fluxo-caixa' },
+      { label: 'Prog. da Semana', icon: CalendarDays,  to: '/programacao-semana' },
     ]
   },
   {
     label: 'Cadastros', icon: Users, children: [
-      { label: 'Clientes', icon: Users, to: '/clientes' },
-      { label: 'Fornecedores', icon: Truck, to: '/fornecedores' },
-      { label: 'Plano de Contas', icon: FileText, to: '/plano-contas' },
+      { label: 'Clientes',       icon: Users,     to: '/clientes' },
+      { label: 'Fornecedores',   icon: Truck,     to: '/fornecedores' },
+      { label: 'Plano de Contas',icon: FileText,  to: '/plano-contas' },
     ]
   },
   { label: 'Passivos Especiais', icon: AlertTriangle, to: '/passivos' },
-  { label: 'Relatórios', icon: BarChart2, to: '/relatorios' },
+  { label: 'Relatórios',         icon: BarChart2,     to: '/relatorios' },
   {
     label: 'Administração', icon: ShieldCheck, adminOnly: true, children: [
-      { label: 'Gestão de Acessos', icon: Users,       to: '/gestao-acessos' },
-      { label: 'Logs de Sistema',   icon: ScrollText,  to: '/audit-log' },
+      { label: 'Gestão de Acessos', icon: Users,      to: '/gestao-acessos' },
+      { label: 'Logs de Sistema',   icon: ScrollText, to: '/audit-log' },
     ],
   },
 ];
@@ -43,7 +43,6 @@ function NavItem({ item, collapsed, depth = 0 }) {
     item.children?.some(c => location.pathname === c.to)
   );
 
-  // Oculta itens adminOnly para não-admins
   if (item.adminOnly && !isAdmin) return null;
 
   if (item.children) {
@@ -88,6 +87,96 @@ function NavItem({ item, collapsed, depth = 0 }) {
   );
 }
 
+/** Dropdown seletor de empresa na sidebar */
+function EmpresaSwitcher({ collapsed }) {
+  const { empresas, empresaAtiva, setEmpresaAtiva } = useAuth();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref  = useRef(null);
+
+  // Fecha ao clicar fora
+  useEffect(() => {
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  if (collapsed) {
+    return (
+      <div className="px-3 py-2 border-b border-white/10">
+        <div
+          title={empresaAtiva?.nome ?? 'Selecionar empresa'}
+          className="w-8 h-8 rounded-lg bg-unicri-orange/20 flex items-center justify-center cursor-pointer hover:bg-unicri-orange/30 transition-colors"
+          onClick={() => !empresaAtiva && navigate('/setup')}
+        >
+          <Building2 size={16} className="text-unicri-orange" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref} className="px-3 py-2 border-b border-white/10 relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/5 transition-colors group"
+      >
+        <div className="w-7 h-7 rounded-md bg-unicri-orange/20 flex items-center justify-center shrink-0">
+          <Building2 size={14} className="text-unicri-orange" />
+        </div>
+        <div className="flex-1 min-w-0 text-left">
+          {empresaAtiva ? (
+            <>
+              <div className="text-[11px] text-gray-400 leading-none mb-0.5">Empresa ativa</div>
+              <div className="text-xs font-semibold text-white truncate">{empresaAtiva.nome}</div>
+            </>
+          ) : (
+            <div className="text-xs font-semibold text-amber-400">Selecionar empresa…</div>
+          )}
+        </div>
+        <ChevronDown size={13} className={`text-gray-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-30 left-3 right-3 top-full mt-1 bg-white rounded-xl shadow-xl border border-gray-100 py-1 overflow-hidden">
+          {empresas.length === 0 && (
+            <div className="px-3 py-2 text-xs text-gray-400">Nenhuma empresa</div>
+          )}
+          {empresas.map(emp => (
+            <button
+              key={emp.id}
+              onClick={() => { setEmpresaAtiva(emp); setOpen(false); navigate('/'); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
+            >
+              <div className="w-6 h-6 rounded bg-unicri-orange/10 flex items-center justify-center shrink-0">
+                <Building2 size={12} className="text-unicri-orange" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-gray-800 truncate">{emp.nome}</div>
+                {emp.cnpj && <div className="text-[10px] text-gray-400">{emp.cnpj}</div>}
+              </div>
+              {empresaAtiva?.id === emp.id && (
+                <Check size={13} className="text-unicri-orange shrink-0" />
+              )}
+            </button>
+          ))}
+          <div className="border-t border-gray-100 mt-1 pt-1">
+            <button
+              onClick={() => { setOpen(false); navigate('/setup'); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 transition-colors text-unicri-orange"
+            >
+              <Plus size={13} />
+              <span className="text-xs font-semibold">Nova empresa</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Layout({ children }) {
   const [collapsed, setCollapsed]   = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -113,6 +202,9 @@ export default function Layout({ children }) {
           {collapsed ? <Menu size={18} /> : <X size={18} />}
         </button>
       </div>
+
+      {/* Seletor de empresa */}
+      <EmpresaSwitcher collapsed={collapsed} />
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">

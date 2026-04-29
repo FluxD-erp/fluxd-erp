@@ -1,9 +1,25 @@
+import { supabase } from '../lib/supabase';
+
 const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api';
 
+/** Retorna headers com JWT + empresa ativa */
+async function buildHeaders(extra = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const empresaId = localStorage.getItem('empresaAtiva') || '';
+
+  return {
+    'Content-Type': 'application/json',
+    ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+    ...(empresaId ? { 'X-Empresa-ID': empresaId } : {}),
+    ...extra,
+  };
+}
+
 async function req(path, options = {}) {
+  const headers = await buildHeaders(options.headers);
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   if (!res.ok) {
@@ -16,52 +32,65 @@ async function req(path, options = {}) {
 export const api = {
   // Dashboard
   dashboard: {
-    kpis: () => req('/dashboard/kpis'),
-    fluxoMensal: () => req('/dashboard/fluxo-mensal'),
-    distribuicaoDespesas: () => req('/dashboard/distribuicao-despesas'),
-    ultimosLancamentos: () => req('/dashboard/ultimos-lancamentos'),
+    kpis               : ()       => req('/dashboard/kpis'),
+    fluxoMensal        : ()       => req('/dashboard/fluxo-mensal'),
+    distribuicaoDespesas: ()      => req('/dashboard/distribuicao-despesas'),
+    ultimosLancamentos : ()       => req('/dashboard/ultimos-lancamentos'),
   },
 
-  // CNPJ
+  // CNPJ (público, sem empresa)
   cnpj: (cnpj) => req(`/cnpj/${cnpj.replace(/\D/g, '')}`),
+
+  // Empresas
+  empresas: {
+    listar  : ()          => req('/empresas'),
+    criar   : (data)      => req('/empresas', { method: 'POST', body: data }),
+    buscar  : (id)        => req(`/empresas/${id}`),
+    atualizar: (id, data) => req(`/empresas/${id}`, { method: 'PUT', body: data }),
+    usuarios: {
+      listar     : (id)            => req(`/empresas/${id}/usuarios`),
+      vincular   : (id, data)      => req(`/empresas/${id}/usuarios`, { method: 'POST', body: data }),
+      atualizar  : (id, uid, data) => req(`/empresas/${id}/usuarios/${uid}`, { method: 'PATCH', body: data }),
+    },
+  },
 
   // Clientes
   clientes: {
-    listar: (params = {}) => req(`/clientes?${new URLSearchParams(params)}`),
-    buscar: (id) => req(`/clientes/${id}`),
-    criar: (data) => req('/clientes', { method: 'POST', body: data }),
-    atualizar: (id, data) => req(`/clientes/${id}`, { method: 'PUT', body: data }),
-    excluir: (id) => req(`/clientes/${id}`, { method: 'DELETE' }),
+    listar   : (params = {}) => req(`/clientes?${new URLSearchParams(params)}`),
+    buscar   : (id)          => req(`/clientes/${id}`),
+    criar    : (data)        => req('/clientes', { method: 'POST', body: data }),
+    atualizar: (id, data)    => req(`/clientes/${id}`, { method: 'PUT', body: data }),
+    excluir  : (id)          => req(`/clientes/${id}`, { method: 'DELETE' }),
   },
 
   // Fornecedores
   fornecedores: {
-    listar: (params = {}) => req(`/fornecedores?${new URLSearchParams(params)}`),
-    buscar: (id) => req(`/fornecedores/${id}`),
-    criar: (data) => req('/fornecedores', { method: 'POST', body: data }),
-    atualizar: (id, data) => req(`/fornecedores/${id}`, { method: 'PUT', body: data }),
-    excluir: (id) => req(`/fornecedores/${id}`, { method: 'DELETE' }),
+    listar   : (params = {}) => req(`/fornecedores?${new URLSearchParams(params)}`),
+    buscar   : (id)          => req(`/fornecedores/${id}`),
+    criar    : (data)        => req('/fornecedores', { method: 'POST', body: data }),
+    atualizar: (id, data)    => req(`/fornecedores/${id}`, { method: 'PUT', body: data }),
+    excluir  : (id)          => req(`/fornecedores/${id}`, { method: 'DELETE' }),
   },
 
   // Financeiro
   financeiro: {
-    lancamentos: (params = {}) => req(`/financeiro/lancamentos?${new URLSearchParams(params)}`),
-    criarLancamento: (data) => req('/financeiro/lancamentos', { method: 'POST', body: data }),
-    atualizarLancamento: (id, data) => req(`/financeiro/lancamentos/${id}`, { method: 'PUT', body: data }),
+    lancamentos       : (params = {}) => req(`/financeiro/lancamentos?${new URLSearchParams(params)}`),
+    criarLancamento   : (data)        => req('/financeiro/lancamentos', { method: 'POST', body: data }),
+    atualizarLancamento: (id, data)   => req(`/financeiro/lancamentos/${id}`, { method: 'PUT', body: data }),
 
-    contasPagar: (params = {}) => req(`/financeiro/contas-pagar?${new URLSearchParams(params)}`),
-    criarContaPagar: (data) => req('/financeiro/contas-pagar', { method: 'POST', body: data }),
-    pagarConta: (id, data) => req(`/financeiro/contas-pagar/${id}/pagar`, { method: 'PATCH', body: data }),
-    atualizarContaPagar: (id, data) => req(`/financeiro/contas-pagar/${id}`, { method: 'PUT', body: data }),
+    contasPagar        : (params = {}) => req(`/financeiro/contas-pagar?${new URLSearchParams(params)}`),
+    criarContaPagar    : (data)        => req('/financeiro/contas-pagar', { method: 'POST', body: data }),
+    pagarConta         : (id, data)    => req(`/financeiro/contas-pagar/${id}/pagar`, { method: 'PATCH', body: data }),
+    atualizarContaPagar: (id, data)    => req(`/financeiro/contas-pagar/${id}`, { method: 'PUT', body: data }),
 
-    contasReceber: (params = {}) => req(`/financeiro/contas-receber?${new URLSearchParams(params)}`),
-    criarContaReceber: (data) => req('/financeiro/contas-receber', { method: 'POST', body: data }),
-    receberConta: (id, data) => req(`/financeiro/contas-receber/${id}/receber`, { method: 'PATCH', body: data }),
-    atualizarContaReceber: (id, data) => req(`/financeiro/contas-receber/${id}`, { method: 'PUT', body: data }),
+    contasReceber        : (params = {}) => req(`/financeiro/contas-receber?${new URLSearchParams(params)}`),
+    criarContaReceber    : (data)        => req('/financeiro/contas-receber', { method: 'POST', body: data }),
+    receberConta         : (id, data)    => req(`/financeiro/contas-receber/${id}/receber`, { method: 'PATCH', body: data }),
+    atualizarContaReceber: (id, data)    => req(`/financeiro/contas-receber/${id}`, { method: 'PUT', body: data }),
 
     planoContas: () => req('/financeiro/plano-contas'),
-    fluxoCaixa: (params = {}) => req(`/financeiro/fluxo-caixa?${new URLSearchParams(params)}`),
-    dre: (params = {}) => req(`/financeiro/dre?${new URLSearchParams(params)}`),
+    fluxoCaixa : (params = {}) => req(`/financeiro/fluxo-caixa?${new URLSearchParams(params)}`),
+    dre        : (params = {}) => req(`/financeiro/dre?${new URLSearchParams(params)}`),
   },
 };
 

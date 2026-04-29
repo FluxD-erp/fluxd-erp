@@ -2,6 +2,8 @@ const express = require('express');
 const router  = express.Router();
 const { db }  = require('../db/supabase');
 const fetch   = require('node-fetch');
+const { requireAuth }    = require('../middleware/auth');
+const { requireEmpresa } = require('../middleware/empresa');
 
 // ----------------------------------------------------------------
 // CNPJ Lookup via BrasilAPI
@@ -41,11 +43,13 @@ router.get('/cnpj/:cnpj', async (req, res) => {
 // ----------------------------------------------------------------
 // CLIENTES
 // ----------------------------------------------------------------
-router.get('/clientes', async (req, res) => {
+router.get('/clientes', requireAuth, requireEmpresa, async (req, res) => {
   try {
     const { search, ativo } = req.query;
 
-    let q = db.from('clientes').select('*').order('nome', { ascending: true });
+    let q = db.from('clientes').select('*')
+      .eq('empresa_id', req.empresaId)
+      .order('nome', { ascending: true });
 
     if (ativo !== undefined) q = q.eq('ativo', ativo === 'true');
     if (search) q = q.or(`nome.ilike.%${search}%,cpf_cnpj.ilike.%${search}%,email.ilike.%${search}%`);
@@ -58,9 +62,10 @@ router.get('/clientes', async (req, res) => {
   }
 });
 
-router.get('/clientes/:id', async (req, res) => {
+router.get('/clientes/:id', requireAuth, requireEmpresa, async (req, res) => {
   try {
-    const { data, error } = await db.from('clientes').select('*').eq('id', req.params.id).single();
+    const { data, error } = await db.from('clientes').select('*')
+      .eq('id', req.params.id).eq('empresa_id', req.empresaId).single();
     if (error || !data) return res.status(404).json({ error: 'Cliente não encontrado' });
     res.json(data);
   } catch (e) {
@@ -68,14 +73,15 @@ router.get('/clientes/:id', async (req, res) => {
   }
 });
 
-router.post('/clientes', async (req, res) => {
+router.post('/clientes', requireAuth, requireEmpresa, async (req, res) => {
   try {
     const { tipo, nome, razao_social, cpf_cnpj, email, telefone, endereco, numero,
       complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal } = req.body;
 
     const { data, error } = await db.from('clientes')
       .insert({ tipo, nome, razao_social, cpf_cnpj, email, telefone, endereco, numero,
-        complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal })
+        complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal,
+        empresa_id: req.empresaId })
       .select()
       .single();
 
@@ -86,7 +92,7 @@ router.post('/clientes', async (req, res) => {
   }
 });
 
-router.put('/clientes/:id', async (req, res) => {
+router.put('/clientes/:id', requireAuth, requireEmpresa, async (req, res) => {
   try {
     const { nome, razao_social, cpf_cnpj, email, telefone, endereco, numero,
       complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal, ativo } = req.body;
@@ -96,7 +102,8 @@ router.put('/clientes/:id', async (req, res) => {
         complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal,
         ativo: ativo !== undefined ? Boolean(ativo) : true,
         atualizado_em: new Date().toISOString() })
-      .eq('id', req.params.id);
+      .eq('id', req.params.id)
+      .eq('empresa_id', req.empresaId);
 
     if (error) throw error;
     res.json({ id: req.params.id, ...req.body });
@@ -105,11 +112,12 @@ router.put('/clientes/:id', async (req, res) => {
   }
 });
 
-router.delete('/clientes/:id', async (req, res) => {
+router.delete('/clientes/:id', requireAuth, requireEmpresa, async (req, res) => {
   try {
     const { error } = await db.from('clientes')
       .update({ ativo: false, atualizado_em: new Date().toISOString() })
-      .eq('id', req.params.id);
+      .eq('id', req.params.id)
+      .eq('empresa_id', req.empresaId);
     if (error) throw error;
     res.json({ success: true });
   } catch (e) {
@@ -120,11 +128,13 @@ router.delete('/clientes/:id', async (req, res) => {
 // ----------------------------------------------------------------
 // FORNECEDORES
 // ----------------------------------------------------------------
-router.get('/fornecedores', async (req, res) => {
+router.get('/fornecedores', requireAuth, requireEmpresa, async (req, res) => {
   try {
     const { search, ativo } = req.query;
 
-    let q = db.from('fornecedores').select('*').order('nome', { ascending: true });
+    let q = db.from('fornecedores').select('*')
+      .eq('empresa_id', req.empresaId)
+      .order('nome', { ascending: true });
 
     if (ativo !== undefined) q = q.eq('ativo', ativo === 'true');
     if (search) q = q.or(`nome.ilike.%${search}%,cpf_cnpj.ilike.%${search}%,email.ilike.%${search}%,categoria.ilike.%${search}%`);
@@ -137,9 +147,10 @@ router.get('/fornecedores', async (req, res) => {
   }
 });
 
-router.get('/fornecedores/:id', async (req, res) => {
+router.get('/fornecedores/:id', requireAuth, requireEmpresa, async (req, res) => {
   try {
-    const { data, error } = await db.from('fornecedores').select('*').eq('id', req.params.id).single();
+    const { data, error } = await db.from('fornecedores').select('*')
+      .eq('id', req.params.id).eq('empresa_id', req.empresaId).single();
     if (error || !data) return res.status(404).json({ error: 'Fornecedor não encontrado' });
     res.json(data);
   } catch (e) {
@@ -147,14 +158,15 @@ router.get('/fornecedores/:id', async (req, res) => {
   }
 });
 
-router.post('/fornecedores', async (req, res) => {
+router.post('/fornecedores', requireAuth, requireEmpresa, async (req, res) => {
   try {
     const { tipo, nome, razao_social, cpf_cnpj, email, telefone, endereco, numero,
       complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal, categoria } = req.body;
 
     const { data, error } = await db.from('fornecedores')
       .insert({ tipo, nome, razao_social, cpf_cnpj, email, telefone, endereco, numero,
-        complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal, categoria })
+        complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal, categoria,
+        empresa_id: req.empresaId })
       .select()
       .single();
 
@@ -165,7 +177,7 @@ router.post('/fornecedores', async (req, res) => {
   }
 });
 
-router.put('/fornecedores/:id', async (req, res) => {
+router.put('/fornecedores/:id', requireAuth, requireEmpresa, async (req, res) => {
   try {
     const { nome, razao_social, cpf_cnpj, email, telefone, endereco, numero,
       complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal, categoria, ativo } = req.body;
@@ -175,7 +187,8 @@ router.put('/fornecedores/:id', async (req, res) => {
         complemento, bairro, cidade, uf, cep, situacao_cadastral, atividade_principal, categoria,
         ativo: ativo !== undefined ? Boolean(ativo) : true,
         atualizado_em: new Date().toISOString() })
-      .eq('id', req.params.id);
+      .eq('id', req.params.id)
+      .eq('empresa_id', req.empresaId);
 
     if (error) throw error;
     res.json({ id: req.params.id, ...req.body });
@@ -184,11 +197,12 @@ router.put('/fornecedores/:id', async (req, res) => {
   }
 });
 
-router.delete('/fornecedores/:id', async (req, res) => {
+router.delete('/fornecedores/:id', requireAuth, requireEmpresa, async (req, res) => {
   try {
     const { error } = await db.from('fornecedores')
       .update({ ativo: false, atualizado_em: new Date().toISOString() })
-      .eq('id', req.params.id);
+      .eq('id', req.params.id)
+      .eq('empresa_id', req.empresaId);
     if (error) throw error;
     res.json({ success: true });
   } catch (e) {
