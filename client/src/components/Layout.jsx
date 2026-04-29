@@ -175,6 +175,7 @@ export default function Layout({ children }) {
   const [collapsed, setCollapsed]   = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { profile, signOut }        = useAuth();
+  const navigate                    = useNavigate();
 
   const sidebar = (
     <div className={`flex flex-col h-full bg-unicri-navy transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'}`}>
