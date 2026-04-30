@@ -628,6 +628,73 @@ router.get('/dre', async (req, res) => {
 });
 
 // ----------------------------------------------------------------
+// GET /financeiro/dre/analitico — DRE com lançamentos detalhados por categoria
+// ----------------------------------------------------------------
+router.get('/dre/analitico', async (req, res) => {
+  try {
+    const hoje       = new Date().toISOString().split('T')[0];
+    const dataInicio = req.query.inicio || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+    const dataFim    = req.query.fim    || hoje;
+
+    const { data: rows, error } = await db.from('lancamentos')
+      .select('descricao, tipo, valor, data_competencia, numero_documento, clientes!cliente_id(nome), fornecedores!fornecedor_id(nome), plano_contas!conta_id(codigo, nome)')
+      .eq('empresa_id', req.empresaId)
+      .eq('status', 'PAGO')
+      .gte('data_competencia', dataInicio)
+      .lte('data_competencia', dataFim)
+      .order('data_competencia', { ascending: true });
+
+    if (error) throw error;
+
+    // Agrupa por categoria (conta contábil)
+    const categoriasMap = {};
+    let totalReceitas = 0;
+    let totalDespesas = 0;
+
+    (rows || []).forEach(r => {
+      const v       = Number(r.valor);
+      const codigo  = r.plano_contas?.codigo || '?';
+      const nome    = r.plano_contas?.nome   || 'Sem conta';
+      const tipo    = r.tipo;
+      const key     = `${tipo}__${codigo}`;
+
+      if (!categoriasMap[key]) {
+        categoriasMap[key] = { codigo, nome, tipo, total: 0, lancamentos: [] };
+      }
+
+      categoriasMap[key].total += v;
+      categoriasMap[key].lancamentos.push({
+        data           : r.data_competencia,
+        descricao      : r.descricao,
+        numero_documento: r.numero_documento || null,
+        cliente        : r.clientes?.nome    || null,
+        fornecedor     : r.fornecedores?.nome || null,
+        valor          : v,
+      });
+
+      if (tipo === 'RECEITA') totalReceitas += v;
+      else                    totalDespesas += v;
+    });
+
+    const categorias = Object.values(categoriasMap)
+      .sort((a, b) => a.codigo.localeCompare(b.codigo));
+
+    res.json({
+      periodo        : { inicio: dataInicio, fim: dataFim },
+      categorias,
+      total_receitas : totalReceitas,
+      total_despesas : totalDespesas,
+      resultado      : totalReceitas - totalDespesas,
+      margem         : totalReceitas > 0
+        ? ((totalReceitas - totalDespesas) / totalReceitas * 100).toFixed(2)
+        : 0,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ----------------------------------------------------------------
 // POST /financeiro/importar — importação bulk de lançamentos via CSV
 // Body: { rows: [{ descricao, tipo, valor, data_competencia, status?, observacao? }] }
 // ----------------------------------------------------------------

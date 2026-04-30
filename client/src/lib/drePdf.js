@@ -27,7 +27,7 @@ function pctStr(val, total) {
 }
 
 // ── Exportação principal ─────────────────────────────────────────
-export function exportarDREpdf(dre, periodo, empresa) {
+export function exportarDREpdf(dre, periodo, empresa, analitico = null) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
   const PW = 210;   // largura total
@@ -401,6 +401,132 @@ export function exportarDREpdf(dre, periodo, empresa) {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(...GRAY);
   doc.text('Página 1', PW - MR, FY + 1, { align: 'right' });
+
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  PÁGINAS ANALÍTICAS (uma por categoria)                     ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  if (analitico?.categorias?.length > 0) {
+    analitico.categorias.forEach((cat, catIdx) => {
+      doc.addPage();
+
+      // Cabeçalho da página analítica
+      doc.setFillColor(...NAVY);
+      doc.rect(0, 0, PW, 28, 'F');
+      doc.setFillColor(...TEAL);
+      doc.rect(0, 25.5, PW, 2.5, 'F');
+      doc.setFillColor(...TEAL);
+      doc.rect(0, 0, 4.5, 28, 'F');
+
+      // Tipo badge
+      const isTipoReceita = cat.tipo === 'RECEITA';
+      doc.setFillColor(...(isTipoReceita ? GREEN : RED));
+      doc.roundedRect(ML + 5, 5, 22, 7, 1.5, 1.5, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6);
+      doc.setTextColor(...WHITE);
+      doc.text(cat.tipo, ML + 16, 10, { align: 'center' });
+
+      // Nome da categoria
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(...WHITE);
+      doc.text(cat.nome.toUpperCase(), ML + 5, 20);
+
+      // Total da categoria (direita)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...(isTipoReceita ? GREEN : RED));
+      doc.text(fmt(cat.total), PW - MR, 14, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(140, 175, 205);
+      doc.text(`${pctStr(cat.total, isTipoReceita ? analitico.total_receitas : analitico.total_despesas)} do total de ${cat.tipo === 'RECEITA' ? 'receitas' : 'despesas'}`, PW - MR, 21, { align: 'right' });
+
+      // Período
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(140, 175, 205);
+      doc.text(`Período: ${fmtDate(periodo.inicio)} a ${fmtDate(periodo.fim)}`, ML + 5, 26.5);
+
+      // Branding
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 150, 180);
+      doc.text('FluxD', PW - MR, 8, { align: 'right' });
+
+      // Tabela de lançamentos
+      const lancRows = cat.lancamentos.map(l => [
+        fmtDate(l.data),
+        l.descricao,
+        l.cliente || l.fornecedor || '—',
+        l.numero_documento || '—',
+        fmt(l.valor),
+      ]);
+
+      // Subtotal
+      lancRows.push([
+        { content: 'TOTAL', colSpan: 4, styles: { halign: 'right', fontStyle: 'bold', fillColor: NAVY, textColor: WHITE } },
+        { content: fmt(cat.total), styles: { halign: 'right', fontStyle: 'bold', fillColor: NAVY, textColor: WHITE } },
+      ]);
+
+      autoTable(doc, {
+        startY: 35,
+        margin: { left: ML, right: MR },
+        head: [[
+          { content: 'DATA',       styles: { halign: 'left'  } },
+          { content: 'DESCRIÇÃO',  styles: { halign: 'left'  } },
+          { content: 'CLIENTE/FORNECEDOR', styles: { halign: 'left' } },
+          { content: 'Nº DOC',     styles: { halign: 'left'  } },
+          { content: 'VALOR (R$)', styles: { halign: 'right' } },
+        ]],
+        body: lancRows,
+        styles: {
+          font: 'helvetica',
+          fontSize: 8,
+          cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
+          lineColor: [220, 228, 238],
+          lineWidth: 0.2,
+        },
+        headStyles: {
+          fillColor: NAVY,
+          textColor: WHITE,
+          fontSize: 7,
+          fontStyle: 'bold',
+          cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
+        },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 72 },
+          2: { cellWidth: 42 },
+          3: { cellWidth: 16 },
+          4: { cellWidth: 30, halign: 'right' },
+        },
+        alternateRowStyles: { fillColor: [252, 253, 255] },
+        didParseCell(data) {
+          if (data.section !== 'body') return;
+          const isLast = data.row.index === lancRows.length - 1;
+          if (!isLast && data.column.index === 4) {
+            data.cell.styles.textColor = isTipoReceita ? [22, 163, 74] : [185, 28, 28];
+          }
+        },
+      });
+
+      // Rodapé da página analítica
+      const pageNum = doc.getNumberOfPages();
+      doc.setFillColor(...TEAL);
+      doc.rect(0, PH - 10 - 4.5, PW, 0.7, 'F');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...GRAY);
+      doc.text(`Gerado em ${agora}`, ML, PH - 10 + 1);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...NAVY);
+      doc.text('FluxD ERP — Sistema de Gestão Financeira', PW / 2, PH - 10 + 1, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...GRAY);
+      doc.text(`Página ${pageNum}`, PW - MR, PH - 10 + 1, { align: 'right' });
+    });
+  }
 
   // ── Salvar ────────────────────────────────────────────────────
   const filename = `DRE_${periodo.inicio}_${periodo.fim}.pdf`;

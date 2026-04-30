@@ -9,9 +9,10 @@ import { exportarDREpdf } from '../lib/drePdf';
 
 export default function Relatorios() {
   const { empresaAtiva } = useAuth();
-  const [dre, setDre] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [dre, setDre]           = useState(null);
+  const [loading, setLoading]   = useState(true);
   const [exportando, setExportando] = useState(false);
+  const [analitico, setAnalitico]   = useState(false); // incluir páginas analíticas
   const [periodo, setPeriodo] = useState(() => {
     const hoje = new Date();
     return {
@@ -33,7 +34,11 @@ export default function Relatorios() {
     if (!dre) return;
     setExportando(true);
     try {
-      await exportarDREpdf(dre, periodo, empresaAtiva);
+      let dadosAnaliticos = null;
+      if (analitico) {
+        dadosAnaliticos = await api.financeiro.dreAnalitico(periodo);
+      }
+      await exportarDREpdf(dre, periodo, empresaAtiva, dadosAnaliticos);
     } finally {
       setExportando(false);
     }
@@ -60,18 +65,6 @@ export default function Relatorios() {
       <PageHeader
         title="Relatórios Financeiros"
         subtitle="DRE — Demonstrativo de Resultado do Exercício"
-        actions={
-          dre && (
-            <button
-              className="btn-primary flex items-center gap-2"
-              onClick={handleExportarPDF}
-              disabled={exportando}
-            >
-              <Download size={16} />
-              {exportando ? 'Gerando PDF…' : 'Exportar PDF'}
-            </button>
-          )
-        }
       />
 
       {/* Filtro */}
@@ -89,6 +82,27 @@ export default function Relatorios() {
         <button className="btn-primary" onClick={carregar}>
           <FileText size={16} /> Gerar Relatório
         </button>
+        {dre && (
+          <div className="flex items-center gap-4 ml-auto">
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={analitico}
+                onChange={e => setAnalitico(e.target.checked)}
+                className="w-4 h-4 accent-unicri-orange"
+              />
+              Incluir detalhamento analítico
+            </label>
+            <button
+              className="btn-primary flex items-center gap-2"
+              onClick={handleExportarPDF}
+              disabled={exportando}
+            >
+              <Download size={16} />
+              {exportando ? 'Gerando PDF…' : 'Exportar PDF'}
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
