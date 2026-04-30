@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, CheckCircle, Repeat, Layers } from 'lucide-react';
+import { Plus, Search, CheckCircle, Repeat, Layers, Pencil, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, fmt, fmtData } from '../services/api';
 import PageHeader from '../components/PageHeader';
@@ -15,14 +15,19 @@ function StatusBadge({ status }) {
   return <span className={map[status] || 'badge-pendente'}>{status}</span>;
 }
 
-function FormConta({ onSave, onClose, clientes, planoContas }) {
+function FormConta({ onSave, onClose, clientes, planoContas, conta }) {
+  const editando = !!conta;
   const [form, setForm] = useState({
-    cliente_id: '', descricao: '', valor_original: '',
-    data_emissao: new Date().toISOString().split('T')[0],
-    data_vencimento: '', numero_documento: '', observacao: '',
-    conta_id: '',
+    cliente_id     : conta?.cliente_id      || '',
+    descricao      : conta?.descricao       || '',
+    valor_original : conta?.valor_original  || '',
+    data_emissao   : conta?.data_emissao    || new Date().toISOString().split('T')[0],
+    data_vencimento: conta?.data_vencimento || '',
+    numero_documento: conta?.numero_documento || '',
+    observacao     : conta?.observacao      || '',
+    conta_id       : conta?.conta_id        || '',
   });
-  const [modo, setModo] = useState('simples'); // 'simples' | 'parcelado' | 'recorrente'
+  const [modo, setModo] = useState('simples');
   const [numParcelas, setNumParcelas] = useState('2');
   const [frequencia, setFrequencia] = useState('MENSAL');
 
@@ -33,19 +38,26 @@ function FormConta({ onSave, onClose, clientes, planoContas }) {
     if (!form.cliente_id || !form.descricao || !form.valor_original || !form.data_vencimento)
       return toast.error('Preencha todos os campos obrigatórios');
     try {
-      const payload = {
-        ...form,
-        valor_original: parseFloat(form.valor_original),
-        parcelado   : modo === 'parcelado',
-        recorrente  : modo === 'recorrente',
-        num_parcelas: modo === 'parcelado' ? parseInt(numParcelas) : 1,
-        frequencia  : modo !== 'simples' ? frequencia : null,
-      };
-      const res = await api.financeiro.criarContaReceber(payload);
-      if (res?.parcelas) {
-        toast.success(`${res.parcelas} parcelas cadastradas!`);
+      if (editando) {
+        await api.financeiro.atualizarContaReceber(conta.id, {
+          ...form, valor_original: parseFloat(form.valor_original),
+        });
+        toast.success('Conta atualizada!');
       } else {
-        toast.success(modo === 'recorrente' ? 'Conta recorrente cadastrada!' : 'Conta a receber cadastrada!');
+        const payload = {
+          ...form,
+          valor_original: parseFloat(form.valor_original),
+          parcelado   : modo === 'parcelado',
+          recorrente  : modo === 'recorrente',
+          num_parcelas: modo === 'parcelado' ? parseInt(numParcelas) : 1,
+          frequencia  : modo !== 'simples' ? frequencia : null,
+        };
+        const res = await api.financeiro.criarContaReceber(payload);
+        if (res?.parcelas) {
+          toast.success(`${res.parcelas} parcelas cadastradas!`);
+        } else {
+          toast.success(modo === 'recorrente' ? 'Conta recorrente cadastrada!' : 'Conta a receber cadastrada!');
+        }
       }
       onSave();
     } catch (e) { toast.error(e.message); }
@@ -53,8 +65,8 @@ function FormConta({ onSave, onClose, clientes, planoContas }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Tipo */}
-      <div className="flex gap-2">
+      {/* Tipo — só no cadastro */}
+      {!editando && <div className="flex gap-2">
         {[
           { val: 'simples',    label: 'Simples' },
           { val: 'parcelado',  label: 'Parcelado' },
@@ -71,10 +83,10 @@ function FormConta({ onSave, onClose, clientes, planoContas }) {
             {o.label}
           </button>
         ))}
-      </div>
+      </div>}
 
-      {/* Opções de parcelamento / recorrência */}
-      {modo === 'parcelado' && (
+      {/* Opções de parcelamento / recorrência — só no cadastro */}
+      {!editando && modo === 'parcelado' && (
         <div className="grid grid-cols-2 gap-4 p-3 bg-blue-50 rounded-xl">
           <div>
             <label className="label">Nº de Parcelas *</label>
@@ -93,7 +105,7 @@ function FormConta({ onSave, onClose, clientes, planoContas }) {
           </div>
         </div>
       )}
-      {modo === 'recorrente' && (
+      {!editando && modo === 'recorrente' && (
         <div className="p-3 bg-amber-50 rounded-xl">
           <label className="label">Frequência de repetição *</label>
           <select className="input" value={frequencia} onChange={e => setFrequencia(e.target.value)}>
@@ -147,7 +159,7 @@ function FormConta({ onSave, onClose, clientes, planoContas }) {
       <div className="flex justify-end gap-2 pt-2">
         <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
         <button type="submit" className="btn-primary">
-          {modo === 'parcelado' ? `Criar ${numParcelas || '?'} Parcelas` : 'Salvar'}
+          {editando ? 'Salvar Alterações' : modo === 'parcelado' ? `Criar ${numParcelas || '?'} Parcelas` : 'Salvar'}
         </button>
       </div>
     </form>
@@ -214,7 +226,8 @@ export default function ContasReceber() {
   const [clientes, setClientes] = useState([]);
   const [planoContas, setPlanoContas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm]   = useState(false);
+  const [editando, setEditando]   = useState(null);
   const [recebendo, setRecebendo] = useState(null);
   const [filtros, setFiltros] = useState({ status: '', search: '' });
 
@@ -315,11 +328,32 @@ export default function ContasReceber() {
                 <td className="px-5 py-3 text-right text-emerald-600">{fmt(c.valor_recebido)}</td>
                 <td className="px-5 py-3"><StatusBadge status={c.status} /></td>
                 <td className="px-5 py-3">
-                  {['ABERTA','PARCIAL','VENCIDA'].includes(c.status) && (
-                    <button className="btn-primary py-1 px-3 text-xs bg-emerald-500 hover:bg-emerald-600" onClick={() => setRecebendo(c)}>
-                      <CheckCircle size={13} /> Receber
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {['ABERTA','PARCIAL','VENCIDA'].includes(c.status) && (
+                      <button className="btn-primary py-1 px-3 text-xs bg-emerald-500 hover:bg-emerald-600" onClick={() => setRecebendo(c)}>
+                        <CheckCircle size={13} /> Receber
+                      </button>
+                    )}
+                    {c.status !== 'CANCELADA' && (
+                      <>
+                        <button onClick={() => setEditando(c)}
+                          className="text-gray-300 hover:text-unicri-orange transition-colors" title="Editar">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={async () => {
+                            if (!confirm('Cancelar esta conta?')) return;
+                            try {
+                              await api.financeiro.atualizarContaReceber(c.id, { ...c, status: 'CANCELADA' });
+                              toast.success('Conta cancelada');
+                              carregar();
+                            } catch (e) { toast.error(e.message); }
+                          }}
+                          className="text-gray-300 hover:text-red-400 transition-colors" title="Cancelar">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -330,6 +364,12 @@ export default function ContasReceber() {
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Nova Conta a Receber">
         <FormConta clientes={clientes} planoContas={planoContas}
           onClose={() => setShowForm(false)} onSave={() => { setShowForm(false); carregar(); }} />
+      </Modal>
+
+      <Modal open={!!editando} onClose={() => setEditando(null)} title="Editar Conta a Receber">
+        <FormConta clientes={clientes} planoContas={planoContas}
+          conta={editando}
+          onClose={() => setEditando(null)} onSave={() => { setEditando(null); carregar(); }} />
       </Modal>
 
       <ModalReceber conta={recebendo} onClose={() => setRecebendo(null)} onSave={() => { setRecebendo(null); carregar(); }} />

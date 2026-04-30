@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, CheckCircle, Repeat, Layers } from 'lucide-react';
+import { Plus, Search, CheckCircle, Repeat, Layers, Pencil, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, fmt, fmtData } from '../services/api';
 import PageHeader from '../components/PageHeader';
@@ -16,14 +16,19 @@ function StatusBadge({ status }) {
   return <span className={map[status] || 'badge-pendente'}>{status}</span>;
 }
 
-function FormConta({ onSave, onClose, fornecedores, planoContas }) {
+function FormConta({ onSave, onClose, fornecedores, planoContas, conta }) {
+  const editando = !!conta;
   const [form, setForm] = useState({
-    fornecedor_id: '', descricao: '', valor_original: '',
-    data_emissao: new Date().toISOString().split('T')[0],
-    data_vencimento: '', numero_documento: '', observacao: '',
-    conta_id: '',
+    fornecedor_id  : conta?.fornecedor_id   || '',
+    descricao      : conta?.descricao       || '',
+    valor_original : conta?.valor_original  || '',
+    data_emissao   : conta?.data_emissao    || new Date().toISOString().split('T')[0],
+    data_vencimento: conta?.data_vencimento || '',
+    numero_documento: conta?.numero_documento || '',
+    observacao     : conta?.observacao      || '',
+    conta_id       : conta?.conta_id        || '',
   });
-  const [modo, setModo] = useState('simples'); // 'simples' | 'parcelado' | 'recorrente'
+  const [modo, setModo] = useState('simples'); // 'simples' | 'parcelado' | 'recorrente' (só no cadastro)
   const [numParcelas, setNumParcelas] = useState('2');
   const [frequencia, setFrequencia] = useState('MENSAL');
 
@@ -34,19 +39,26 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
     if (!form.fornecedor_id || !form.descricao || !form.valor_original || !form.data_vencimento)
       return toast.error('Preencha todos os campos obrigatórios');
     try {
-      const payload = {
-        ...form,
-        valor_original: parseFloat(form.valor_original),
-        parcelado   : modo === 'parcelado',
-        recorrente  : modo === 'recorrente',
-        num_parcelas: modo === 'parcelado' ? parseInt(numParcelas) : 1,
-        frequencia  : modo !== 'simples' ? frequencia : null,
-      };
-      const res = await api.financeiro.criarContaPagar(payload);
-      if (res?.parcelas) {
-        toast.success(`${res.parcelas} parcelas cadastradas!`);
+      if (editando) {
+        await api.financeiro.atualizarContaPagar(conta.id, {
+          ...form, valor_original: parseFloat(form.valor_original),
+        });
+        toast.success('Conta atualizada!');
       } else {
-        toast.success(modo === 'recorrente' ? 'Conta recorrente cadastrada!' : 'Conta a pagar cadastrada!');
+        const payload = {
+          ...form,
+          valor_original: parseFloat(form.valor_original),
+          parcelado   : modo === 'parcelado',
+          recorrente  : modo === 'recorrente',
+          num_parcelas: modo === 'parcelado' ? parseInt(numParcelas) : 1,
+          frequencia  : modo !== 'simples' ? frequencia : null,
+        };
+        const res = await api.financeiro.criarContaPagar(payload);
+        if (res?.parcelas) {
+          toast.success(`${res.parcelas} parcelas cadastradas!`);
+        } else {
+          toast.success(modo === 'recorrente' ? 'Conta recorrente cadastrada!' : 'Conta a pagar cadastrada!');
+        }
       }
       onSave();
     } catch (e) { toast.error(e.message); }
@@ -54,8 +66,8 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Tipo */}
-      <div className="flex gap-2">
+      {/* Tipo — só no cadastro */}
+      {!editando && <div className="flex gap-2">
         {[
           { val: 'simples',    label: 'Simples' },
           { val: 'parcelado',  label: 'Parcelado' },
@@ -72,10 +84,10 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
             {o.label}
           </button>
         ))}
-      </div>
+      </div>}
 
-      {/* Opções de parcelamento / recorrência */}
-      {modo === 'parcelado' && (
+      {/* Opções de parcelamento / recorrência — só no cadastro */}
+      {!editando && modo === 'parcelado' && (
         <div className="grid grid-cols-2 gap-4 p-3 bg-blue-50 rounded-xl">
           <div>
             <label className="label">Nº de Parcelas *</label>
@@ -94,7 +106,7 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
           </div>
         </div>
       )}
-      {modo === 'recorrente' && (
+      {!editando && modo === 'recorrente' && (
         <div className="p-3 bg-amber-50 rounded-xl">
           <label className="label">Frequência de repetição *</label>
           <select className="input" value={frequencia} onChange={e => setFrequencia(e.target.value)}>
@@ -148,7 +160,7 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
       <div className="flex justify-end gap-2 pt-2">
         <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
         <button type="submit" className="btn-primary">
-          {modo === 'parcelado' ? `Criar ${numParcelas || '?'} Parcelas` : 'Salvar Conta'}
+          {editando ? 'Salvar Alterações' : modo === 'parcelado' ? `Criar ${numParcelas || '?'} Parcelas` : 'Salvar Conta'}
         </button>
       </div>
     </form>
@@ -218,7 +230,8 @@ export default function ContasPagar() {
   const [planoContas, setPlanoContas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [pagando, setPagando] = useState(null);
+  const [editando, setEditando] = useState(null);
+  const [pagando, setPagando]   = useState(null);
   const [filtros, setFiltros] = useState({ status: '', search: '' });
 
   const carregar = async () => {
@@ -320,11 +333,32 @@ export default function ContasPagar() {
                 <td className="px-5 py-3 text-right text-emerald-600">{fmt(c.valor_pago)}</td>
                 <td className="px-5 py-3"><StatusBadge status={c.status} /></td>
                 <td className="px-5 py-3">
-                  {['ABERTA','PARCIAL','VENCIDA'].includes(c.status) && (
-                    <button className="btn-primary py-1 px-3 text-xs" onClick={() => setPagando(c)}>
-                      <CheckCircle size={13} /> Pagar
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {['ABERTA','PARCIAL','VENCIDA'].includes(c.status) && (
+                      <button className="btn-primary py-1 px-3 text-xs" onClick={() => setPagando(c)}>
+                        <CheckCircle size={13} /> Pagar
+                      </button>
+                    )}
+                    {c.status !== 'CANCELADA' && (
+                      <>
+                        <button onClick={() => setEditando(c)}
+                          className="text-gray-300 hover:text-unicri-orange transition-colors" title="Editar">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={async () => {
+                            if (!confirm('Cancelar esta conta?')) return;
+                            try {
+                              await api.financeiro.atualizarContaPagar(c.id, { ...c, status: 'CANCELADA' });
+                              toast.success('Conta cancelada');
+                              carregar();
+                            } catch (e) { toast.error(e.message); }
+                          }}
+                          className="text-gray-300 hover:text-red-400 transition-colors" title="Cancelar">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -334,10 +368,18 @@ export default function ContasPagar() {
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Nova Conta a Pagar">
         <FormConta
-          fornecedores={fornecedores}
-          planoContas={planoContas}
+          fornecedores={fornecedores} planoContas={planoContas}
           onClose={() => setShowForm(false)}
           onSave={() => { setShowForm(false); carregar(); }}
+        />
+      </Modal>
+
+      <Modal open={!!editando} onClose={() => setEditando(null)} title="Editar Conta a Pagar">
+        <FormConta
+          fornecedores={fornecedores} planoContas={planoContas}
+          conta={editando}
+          onClose={() => setEditando(null)}
+          onSave={() => { setEditando(null); carregar(); }}
         />
       </Modal>
 
