@@ -32,6 +32,11 @@ O sistema está **deployado e funcional** em:
 | 13 | `3bb341a` | Fix: POST /lancamentos persiste campos OFX (conciliado, ofx_fitid, ofx_memo) |
 | 14 | `8212582` | Exportação de DRE em PDF profissional (jsPDF + autoTable) |
 | 15 | `caabb54` | **Fix crítico:** `X-Empresa-ID` enviava objeto JSON em vez do UUID puro |
+| 16 | (pendente) | Refresh token: redirect para /login em SIGNED_OUT e 401 |
+| 17 | (pendente) | Rate limiting: 300 req/15min geral, 20 req/15min em invite-user |
+| 18 | (pendente) | RLS Supabase: migration `08_rls.sql` — isolamento multi-tenant no banco |
+| 19 | (pendente) | Dashboard por período: seletor mês/ano + KPIs e distribuição filtrados |
+| 20 | (pendente) | Filtros avançados em Lançamentos: conta contábil, cliente, fornecedor |
 
 ---
 
@@ -138,19 +143,21 @@ STRIPE_WEBHOOK_SECRET=      # opcional — webhook sem verificação de assinatu
 ## Próximos passos sugeridos
 
 ### Alta prioridade
+- [x] **Refresh token handling** — `SIGNED_OUT` e 401 redirecionam para `/login` (`AuthContext.jsx` + `api.js`)
+- [x] **Rate limiting no backend** — `express-rate-limit@7.5.0`: 300 req/15min geral, 20 req/15min em `/api/admin/invite-user`
+- [x] **RLS no Supabase** — migration `supabase/migrations/08_rls.sql` pronta para aplicar no SQL Editor; cobre todas as tabelas financeiras + profiles
 - [ ] **Smoke test completo em produção** — agora que o bug do `X-Empresa-ID` foi corrigido, validar todos os módulos no ambiente Netlify + Render
 - [ ] **Seed de dados de demonstração** — facilitar onboarding de novos clientes SaaS com dados realistas pré-carregados
 - [ ] **Testes de carga no Render** — plano gratuito hiberna após inatividade; avaliar upgrade ou warm-up automático
 
 ### Produto
+- [x] **Dashboard por período** — seletor mês/ano com navegação ← →; KPIs e distribuição de despesas filtrados pelo mês selecionado; comparativo vs mês anterior dinâmico
+- [x] **Filtros avançados em Lançamentos** — filtros por conta contábil, cliente e fornecedor adicionados à barra de filtros; seletores de cliente/fornecedor aparecem contextualmente conforme o tipo selecionado; botão "Limpar filtros" quando algum filtro avançado está ativo
 - [ ] **Relatório de Fluxo de Caixa em PDF** — mesmo padrão visual do DRE (reaproveitar `drePdf.js`)
-- [ ] **Filtros avançados em Lançamentos** — por conta contábil, por cliente/fornecedor
 - [ ] **Dashboard por período** — hoje mostra sempre o mês corrente; permitir selecionar mês/ano
-- [ ] **Notificações por e-mail** — boletos vencendo (hoje só aparece no sino)
-- [ ] **Importação de fornecedores/clientes via CSV** — mesmo padrão da importação de lançamentos
 
 ### Técnico
-- [ ] **Rate limiting no backend** — proteger endpoints públicos de abuso
+- [x] **Rate limiting no backend** — implementado (ver Alta prioridade)
 - [ ] **Testes automatizados** — ao menos testes de integração nos endpoints críticos (lançamentos, contas)
-- [ ] **RLS (Row Level Security) no Supabase** — adicionar policies para garantir isolamento multi-tenant no nível do banco, não só na aplicação
-- [ ] **Refresh token handling** — tratar expiração de sessão Supabase com redirect para login
+- [x] **RLS (Row Level Security) no Supabase** — migration `08_rls.sql` criada; aplicar no SQL Editor do Supabase
+- [x] **Refresh token handling** — implementado (ver Alta prioridade)

@@ -55,7 +55,7 @@ function gerarParcelas(base, numParcelas, frequencia, empresaId) {
 // ----------------------------------------------------------------
 router.get('/lancamentos', async (req, res) => {
   try {
-    const { tipo, status, inicio, fim, search } = req.query;
+    const { tipo, status, inicio, fim, search, conta_id, cliente_id, fornecedor_id } = req.query;
 
     let q = db.from('lancamentos')
       .select('*, clientes!cliente_id(nome), fornecedores!fornecedor_id(nome), plano_contas!conta_id(nome)')
@@ -63,11 +63,14 @@ router.get('/lancamentos', async (req, res) => {
       .order('data_competencia', { ascending: false })
       .limit(200);
 
-    if (tipo)   q = q.eq('tipo', tipo);
-    if (status) q = q.eq('status', status);
-    if (inicio) q = q.gte('data_competencia', inicio);
-    if (fim)    q = q.lte('data_competencia', fim);
-    if (search) q = q.ilike('descricao', `%${search}%`);
+    if (tipo)          q = q.eq('tipo', tipo);
+    if (status)        q = q.eq('status', status);
+    if (inicio)        q = q.gte('data_competencia', inicio);
+    if (fim)           q = q.lte('data_competencia', fim);
+    if (search)        q = q.ilike('descricao', `%${search}%`);
+    if (conta_id)      q = q.eq('conta_id', conta_id);
+    if (cliente_id)    q = q.eq('cliente_id', cliente_id);
+    if (fornecedor_id) q = q.eq('fornecedor_id', fornecedor_id);
 
     const { data, error } = await q;
     if (error) throw error;

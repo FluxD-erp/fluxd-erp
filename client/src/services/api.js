@@ -34,6 +34,10 @@ async function req(path, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      window.location.href = '/login';
+      throw new Error('Sessão expirada.');
+    }
     const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
     throw new Error(err.error || `Erro ${res.status}`);
   }
@@ -43,10 +47,10 @@ async function req(path, options = {}) {
 export const api = {
   // Dashboard
   dashboard: {
-    kpis               : ()       => req('/dashboard/kpis'),
-    fluxoMensal        : ()       => req('/dashboard/fluxo-mensal'),
-    distribuicaoDespesas: ()      => req('/dashboard/distribuicao-despesas'),
-    ultimosLancamentos : ()       => req('/dashboard/ultimos-lancamentos'),
+    kpis               : (mes)  => req(`/dashboard/kpis${mes ? `?mes=${mes}` : ''}`),
+    fluxoMensal        : ()     => req('/dashboard/fluxo-mensal'),
+    distribuicaoDespesas: (mes) => req(`/dashboard/distribuicao-despesas${mes ? `?mes=${mes}` : ''}`),
+    ultimosLancamentos : ()     => req('/dashboard/ultimos-lancamentos'),
   },
 
   // CNPJ (público, sem empresa)

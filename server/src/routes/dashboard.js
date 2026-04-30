@@ -8,14 +8,19 @@ const { requireEmpresa } = require('../middleware/empresa');
 router.use(requireAuth, requireEmpresa);
 
 // ----------------------------------------------------------------
-// GET /api/dashboard/kpis
+// GET /api/dashboard/kpis?mes=2026-04
 // ----------------------------------------------------------------
 router.get('/kpis', async (req, res) => {
   try {
-    const eid       = req.empresaId;
-    const hoje      = new Date().toISOString().split('T')[0];
-    const inicioMes = hoje.slice(0, 7) + '-01';
-    const em7Dias   = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const eid  = req.empresaId;
+    const hoje = new Date().toISOString().split('T')[0];
+
+    // Período selecionado (padrão: mês corrente)
+    const mesParam   = req.query.mes || hoje.slice(0, 7);
+    const [ano, mes] = mesParam.split('-').map(Number);
+    const inicioMes  = `${mesParam}-01`;
+    const fimMes     = new Date(ano, mes, 0).toISOString().split('T')[0];
+    const em7Dias    = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
 
     const [
       { data: receitasRows },
@@ -26,38 +31,31 @@ router.get('/kpis', async (req, res) => {
       { data: aVencerRows },
     ] = await Promise.all([
       db.from('lancamentos').select('valor')
-        .eq('empresa_id', eid)
-        .eq('tipo', 'RECEITA').eq('status', 'PAGO')
-        .gte('data_competencia', inicioMes).lte('data_competencia', hoje),
+        .eq('empresa_id', eid).eq('tipo', 'RECEITA').eq('status', 'PAGO')
+        .gte('data_competencia', inicioMes).lte('data_competencia', fimMes),
 
       db.from('lancamentos').select('valor')
-        .eq('empresa_id', eid)
-        .eq('tipo', 'DESPESA').eq('status', 'PAGO')
-        .gte('data_competencia', inicioMes).lte('data_competencia', hoje),
+        .eq('empresa_id', eid).eq('tipo', 'DESPESA').eq('status', 'PAGO')
+        .gte('data_competencia', inicioMes).lte('data_competencia', fimMes),
 
       db.from('contas_pagar').select('valor_original,valor_pago')
-        .eq('empresa_id', eid)
-        .in('status', ['ABERTA', 'PARCIAL']),
+        .eq('empresa_id', eid).in('status', ['ABERTA', 'PARCIAL']),
 
       db.from('contas_receber').select('valor_original,valor_recebido')
-        .eq('empresa_id', eid)
-        .in('status', ['ABERTA', 'PARCIAL']),
+        .eq('empresa_id', eid).in('status', ['ABERTA', 'PARCIAL']),
 
       db.from('contas_pagar').select('valor_original,valor_pago')
-        .eq('empresa_id', eid)
-        .eq('status', 'VENCIDA'),
+        .eq('empresa_id', eid).eq('status', 'VENCIDA'),
 
       db.from('contas_pagar').select('id')
-        .eq('empresa_id', eid)
-        .eq('status', 'ABERTA')
-        .gte('data_vencimento', hoje)
-        .lte('data_vencimento', em7Dias),
+        .eq('empresa_id', eid).eq('status', 'ABERTA')
+        .gte('data_vencimento', hoje).lte('data_vencimento', em7Dias),
     ]);
 
     // Mês anterior para comparativo
-    const mesAntD  = new Date(); mesAntD.setMonth(mesAntD.getMonth() - 1);
-    const mesAntStr = mesAntD.toISOString().slice(0, 7);
-    const inicioMesAnt = mesAntStr + '-01';
+    const mesAntD    = new Date(ano, mes - 2, 1);
+    const mesAntStr  = mesAntD.toISOString().slice(0, 7);
+    const inicioMesAnt = `${mesAntStr}-01`;
     const fimMesAnt    = new Date(mesAntD.getFullYear(), mesAntD.getMonth() + 1, 0).toISOString().split('T')[0];
 
     const [
@@ -139,17 +137,20 @@ router.get('/fluxo-mensal', async (req, res) => {
 });
 
 // ----------------------------------------------------------------
-// GET /api/dashboard/distribuicao-despesas
+// GET /api/dashboard/distribuicao-despesas?mes=2026-04
 // ----------------------------------------------------------------
 router.get('/distribuicao-despesas', async (req, res) => {
   try {
-    const trintaDiasAtras = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+    const mesParam   = req.query.mes || new Date().toISOString().slice(0, 7);
+    const [ano, mes] = mesParam.split('-').map(Number);
+    const inicioMes  = `${mesParam}-01`;
+    const fimMes     = new Date(ano, mes, 0).toISOString().split('T')[0];
 
     const { data: rows, error } = await db.from('lancamentos')
       .select('valor, descricao, plano_contas!conta_id(nome)')
       .eq('empresa_id', req.empresaId)
       .eq('tipo', 'DESPESA').eq('status', 'PAGO')
-      .gte('data_competencia', trintaDiasAtras);
+      .gte('data_competencia', inicioMes).lte('data_competencia', fimMes);
 
     if (error) throw error;
 

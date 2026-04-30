@@ -314,16 +314,21 @@ export default function Lancamentos() {
   const [planoContas, setPlanoContas] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [showForm, setShowForm]       = useState(false);
-  const [editando, setEditando]       = useState(null);   // lançamento sendo editado
+  const [editando, setEditando]       = useState(null);
   const [showImport, setShowImport]   = useState(false);
-  const [filtros, setFiltros]         = useState({ tipo: '', status: '', search: '' });
+  const [filtros, setFiltros]         = useState({
+    tipo: '', status: '', search: '', conta_id: '', cliente_id: '', fornecedor_id: '',
+  });
 
   const carregar = async () => {
     setLoading(true);
     const params = {};
-    if (filtros.tipo)   params.tipo   = filtros.tipo;
-    if (filtros.status) params.status = filtros.status;
-    if (filtros.search) params.search = filtros.search;
+    if (filtros.tipo)          params.tipo          = filtros.tipo;
+    if (filtros.status)        params.status        = filtros.status;
+    if (filtros.search)        params.search        = filtros.search;
+    if (filtros.conta_id)      params.conta_id      = filtros.conta_id;
+    if (filtros.cliente_id)    params.cliente_id    = filtros.cliente_id;
+    if (filtros.fornecedor_id) params.fornecedor_id = filtros.fornecedor_id;
     const [l, c, f, p] = await Promise.all([
       api.financeiro.lancamentos(params),
       api.clientes.listar({ ativo: 'true' }),
@@ -379,12 +384,34 @@ export default function Lancamentos() {
           <input className="input pl-8" placeholder="Buscar descrição..."
             value={filtros.search} onChange={e => setFiltros(f => ({ ...f, search: e.target.value }))} />
         </div>
-        <select className="input w-auto" value={filtros.tipo} onChange={e => setFiltros(f => ({ ...f, tipo: e.target.value }))}>
+        <select className="input w-auto" value={filtros.tipo} onChange={e => setFiltros(f => ({ ...f, tipo: e.target.value, cliente_id: '', fornecedor_id: '' }))}>
           {['', 'RECEITA', 'DESPESA', 'TRANSFERENCIA'].map(t => <option key={t} value={t}>{t || 'Todos os tipos'}</option>)}
         </select>
         <select className="input w-auto" value={filtros.status} onChange={e => setFiltros(f => ({ ...f, status: e.target.value }))}>
           {['', 'PENDENTE', 'PAGO', 'CANCELADO'].map(s => <option key={s} value={s}>{s || 'Todos os status'}</option>)}
         </select>
+        <select className="input w-auto" value={filtros.conta_id} onChange={e => setFiltros(f => ({ ...f, conta_id: e.target.value }))}>
+          <option value="">Todas as contas</option>
+          {planoContas.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}
+        </select>
+        {(filtros.tipo === '' || filtros.tipo === 'RECEITA') && (
+          <select className="input w-auto" value={filtros.cliente_id} onChange={e => setFiltros(f => ({ ...f, cliente_id: e.target.value }))}>
+            <option value="">Todos os clientes</option>
+            {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select>
+        )}
+        {(filtros.tipo === '' || filtros.tipo === 'DESPESA') && (
+          <select className="input w-auto" value={filtros.fornecedor_id} onChange={e => setFiltros(f => ({ ...f, fornecedor_id: e.target.value }))}>
+            <option value="">Todos os fornecedores</option>
+            {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+          </select>
+        )}
+        {(filtros.conta_id || filtros.cliente_id || filtros.fornecedor_id) && (
+          <button className="btn-secondary text-xs px-3"
+            onClick={() => setFiltros(f => ({ ...f, conta_id: '', cliente_id: '', fornecedor_id: '' }))}>
+            Limpar filtros
+          </button>
+        )}
       </div>
 
       <div className="card overflow-x-auto">

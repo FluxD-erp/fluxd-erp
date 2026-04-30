@@ -93,7 +93,7 @@ export function AuthProvider({ children }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         const u = session?.user ?? null;
         setUser(u);
         if (u) initUser(u.id);
@@ -102,6 +102,10 @@ export function AuthProvider({ children }) {
           setEmpresas([]);
           setEmpresaAtiva(null);
           setLoading(false);
+          // Sessão expirada ou inválida — redireciona para login
+          if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
+            window.location.href = '/login';
+          }
         }
       }
     );

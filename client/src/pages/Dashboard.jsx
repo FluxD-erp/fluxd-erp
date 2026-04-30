@@ -5,7 +5,8 @@ import {
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, DollarSign, AlertTriangle,
-  Clock, CheckCircle, ArrowUpRight, ArrowDownRight, Wallet, Target, Pencil
+  Clock, CheckCircle, ArrowUpRight, ArrowDownRight, Wallet, Target, Pencil,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { api, fmt, fmtData, fmtMes } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -13,6 +14,43 @@ import { BRAND, CHART_COLORS } from '../theme';
 import OnboardingChecklist from '../components/OnboardingChecklist';
 
 const COLORS = CHART_COLORS;
+
+// ── Seletor de mês/ano ───────────────────────────────────────────
+function MesSeletor({ value, onChange }) {
+  const [ano, mes] = value.split('-').map(Number);
+
+  const anterior = () => {
+    const d = new Date(ano, mes - 2, 1);
+    onChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+  const proximo = () => {
+    const hoje = new Date();
+    const d    = new Date(ano, mes, 1);
+    if (d > hoje) return;
+    onChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  const hojeStr  = new Date().toISOString().slice(0, 7);
+  const isFuturo = value >= hojeStr;
+
+  const nomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                 'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+  return (
+    <div className="flex items-center gap-1">
+      <button onClick={anterior} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+        <ChevronLeft size={16} />
+      </button>
+      <span className="text-sm font-semibold text-gray-700 min-w-[130px] text-center">
+        {nomes[mes - 1]} {ano}
+      </span>
+      <button onClick={proximo} disabled={isFuturo}
+        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+        <ChevronRight size={16} />
+      </button>
+    </div>
+  );
+}
 
 // ── KPI Card ────────────────────────────────────────────────────
 function KpiCard({ title, value, subtitle, icon: Icon, color, pct }) {
@@ -119,6 +157,7 @@ function MetaMensal({ empresaId, receitaMes }) {
 // ── Dashboard ────────────────────────────────────────────────────
 export default function Dashboard() {
   const { empresaAtiva } = useAuth();
+  const [mesSel, setMesSel]   = useState(() => new Date().toISOString().slice(0, 7));
   const [kpis, setKpis]       = useState(null);
   const [fluxo, setFluxo]     = useState([]);
   const [despesas, setDespesas] = useState([]);
@@ -126,10 +165,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     Promise.all([
-      api.dashboard.kpis(),
+      api.dashboard.kpis(mesSel),
       api.dashboard.fluxoMensal(),
-      api.dashboard.distribuicaoDespesas(),
+      api.dashboard.distribuicaoDespesas(mesSel),
       api.dashboard.ultimosLancamentos(),
     ]).then(([k, f, d, u]) => {
       setKpis(k);
@@ -137,7 +177,7 @@ export default function Dashboard() {
       setDespesas(d);
       setUltimos(u);
     }).catch(console.error).finally(() => setLoading(false));
-  }, []);
+  }, [mesSel]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -157,12 +197,15 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-end justify-between">
+      <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard Financeiro</h1>
           <p className="text-gray-500 text-sm mt-1">Visão geral do desempenho financeiro</p>
         </div>
-        <MetaMensal empresaId={empresaAtiva?.id} receitaMes={kpis?.receita_mes || 0} />
+        <div className="flex items-center gap-4">
+          <MesSeletor value={mesSel} onChange={setMesSel} />
+          <MetaMensal empresaId={empresaAtiva?.id} receitaMes={kpis?.receita_mes || 0} />
+        </div>
       </div>
 
       {/* Onboarding */}
