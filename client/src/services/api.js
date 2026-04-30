@@ -5,7 +5,18 @@ const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api';
 /** Retorna headers com JWT + empresa ativa */
 async function buildHeaders(extra = {}) {
   const { data: { session } } = await supabase.auth.getSession();
-  const empresaId = localStorage.getItem('empresaAtiva') || '';
+
+  // localStorage guarda o objeto completo; extrai só o UUID
+  let empresaId = '';
+  try {
+    const raw = localStorage.getItem('empresaAtiva') || '';
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      empresaId = parsed?.id ?? raw;   // objeto → .id; string pura → usa direto
+    }
+  } catch {
+    empresaId = '';
+  }
 
   return {
     'Content-Type': 'application/json',
