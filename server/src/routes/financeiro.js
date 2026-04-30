@@ -152,6 +152,55 @@ router.delete('/lancamentos/:id', async (req, res) => {
 });
 
 // ----------------------------------------------------------------
+// PATCH /lancamentos/:id/conciliar
+// Marca um lançamento como conciliado (vincula ao OFX)
+// Body: { ofx_fitid, ofx_memo, conciliado }
+// ----------------------------------------------------------------
+router.patch('/lancamentos/:id/conciliar', async (req, res) => {
+  try {
+    const { ofx_fitid, ofx_memo, conciliado = true } = req.body;
+    const { error } = await db.from('lancamentos')
+      .update({
+        conciliado,
+        ofx_fitid    : conciliado ? ofx_fitid : null,
+        ofx_memo     : conciliado ? ofx_memo  : null,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq('id', req.params.id)
+      .eq('empresa_id', req.empresaId);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /lancamentos/conciliar-bulk
+// Concilia múltiplos pares de uma vez
+// Body: { pares: [{ lancamento_id, ofx_fitid, ofx_memo }] }
+router.patch('/lancamentos/conciliar-bulk', async (req, res) => {
+  try {
+    const { pares } = req.body;
+    if (!Array.isArray(pares) || pares.length === 0)
+      return res.status(400).json({ error: 'Nenhum par informado.' });
+
+    const promises = pares.map(({ lancamento_id, ofx_fitid, ofx_memo }) =>
+      db.from('lancamentos')
+        .update({ conciliado: true, ofx_fitid, ofx_memo, atualizado_em: new Date().toISOString() })
+        .eq('id', lancamento_id)
+        .eq('empresa_id', req.empresaId)
+    );
+    const results = await Promise.all(promises);
+    const erros   = results.filter(r => r.error);
+    if (erros.length) throw new Error(erros[0].error.message);
+
+    res.json({ success: true, conciliados: pares.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ----------------------------------------------------------------
 // CONTAS A PAGAR
 // ----------------------------------------------------------------
 router.get('/contas-pagar', async (req, res) => {

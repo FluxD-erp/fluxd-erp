@@ -4,7 +4,7 @@ import {
   LayoutDashboard, TrendingUp, TrendingDown, ArrowLeftRight,
   Users, Truck, FileText, BarChart2, Menu, X, ChevronRight,
   Bell, Settings, LogOut, AlertTriangle, CalendarDays,
-  Building2, ChevronDown, Plus, Check, User, ExternalLink, Zap,
+  Building2, ChevronDown, Plus, Check, User, ExternalLink, Zap, BanknoteIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api, fmt } from '../services/api';
@@ -16,11 +16,12 @@ const NAV = [
   { label: 'Dashboard', icon: LayoutDashboard, to: '/' },
   {
     label: 'Financeiro', icon: ArrowLeftRight, children: [
-      { label: 'Lançamentos',      icon: FileText,     to: '/lancamentos' },
-      { label: 'Contas a Pagar',   icon: TrendingDown, to: '/contas-pagar' },
-      { label: 'Contas a Receber', icon: TrendingUp,   to: '/contas-receber' },
-      { label: 'Fluxo de Caixa',   icon: BarChart2,    to: '/fluxo-caixa' },
-      { label: 'Prog. da Semana',  icon: CalendarDays, to: '/programacao-semana' },
+      { label: 'Lançamentos',      icon: FileText,      to: '/lancamentos' },
+      { label: 'Contas a Pagar',   icon: TrendingDown,  to: '/contas-pagar' },
+      { label: 'Contas a Receber', icon: TrendingUp,    to: '/contas-receber' },
+      { label: 'Fluxo de Caixa',   icon: BarChart2,     to: '/fluxo-caixa' },
+      { label: 'Prog. da Semana',  icon: CalendarDays,  to: '/programacao-semana' },
+      { label: 'Conciliação',      icon: BanknoteIcon,  to: '/conciliacao' },
     ],
   },
   {

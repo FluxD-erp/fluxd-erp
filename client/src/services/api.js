@@ -88,7 +88,9 @@ export const api = {
     receberConta         : (id, data)    => req(`/financeiro/contas-receber/${id}/receber`, { method: 'PATCH', body: data }),
     atualizarContaReceber: (id, data)    => req(`/financeiro/contas-receber/${id}`, { method: 'PUT', body: data }),
 
-    importar   : (rows)      => req('/financeiro/importar', { method: 'POST', body: { rows } }),
+    importar        : (rows)        => req('/financeiro/importar', { method: 'POST', body: { rows } }),
+    conciliar       : (id, data)    => req(`/financeiro/lancamentos/${id}/conciliar`, { method: 'PATCH', body: data }),
+    conciliarBulk   : (pares)       => req('/financeiro/lancamentos/conciliar-bulk', { method: 'PATCH', body: { pares } }),
 
     planoContas: () => req('/financeiro/plano-contas'),
     fluxoCaixa : (params = {}) => req(`/financeiro/fluxo-caixa?${new URLSearchParams(params)}`),

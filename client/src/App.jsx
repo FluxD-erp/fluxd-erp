@@ -28,6 +28,7 @@ import Passivos    from './pages/Passivos';
 // Configurações (todas as seções admin inclusas)
 import Configuracoes from './pages/Configuracoes';
 import Planos        from './pages/Planos';
+import Conciliacao   from './pages/Conciliacao';
 
 /**
  * Guard que redireciona para /setup se o usuário não tiver empresa ativa.
@@ -99,6 +100,7 @@ export default function App() {
 
                     {/* Planos e Billing */}
                     <Route path="/planos"         element={<Planos />} />
+                    <Route path="/conciliacao"    element={<Conciliacao />} />
 
                     {/* Configurações (acesso geral; seções admin-only controladas internamente) */}
                     <Route path="/configuracoes"  element={<Configuracoes />} />
