@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { FileText, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { FileText, TrendingUp, TrendingDown, Download } from 'lucide-react';
 import { api, fmt } from '../services/api';
 import { BRAND } from '../theme';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
+import { exportarDREpdf } from '../lib/drePdf';
 
 export default function Relatorios() {
+  const { empresaAtiva } = useAuth();
   const [dre, setDre] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exportando, setExportando] = useState(false);
   const [periodo, setPeriodo] = useState(() => {
     const hoje = new Date();
     return {
@@ -24,6 +28,16 @@ export default function Relatorios() {
   };
 
   useEffect(() => { carregar(); }, [periodo]);
+
+  const handleExportarPDF = async () => {
+    if (!dre) return;
+    setExportando(true);
+    try {
+      await exportarDREpdf(dre, periodo, empresaAtiva);
+    } finally {
+      setExportando(false);
+    }
+  };
 
   const dreRows = dre ? [
     { label: 'Receita Bruta', valor: dre.total_receitas, tipo: 'receita', bold: true },
@@ -43,7 +57,22 @@ export default function Relatorios() {
 
   return (
     <div>
-      <PageHeader title="Relatórios Financeiros" subtitle="DRE — Demonstrativo de Resultado do Exercício" />
+      <PageHeader
+        title="Relatórios Financeiros"
+        subtitle="DRE — Demonstrativo de Resultado do Exercício"
+        actions={
+          dre && (
+            <button
+              className="btn-primary flex items-center gap-2"
+              onClick={handleExportarPDF}
+              disabled={exportando}
+            >
+              <Download size={16} />
+              {exportando ? 'Gerando PDF…' : 'Exportar PDF'}
+            </button>
+          )
+        }
+      />
 
       {/* Filtro */}
       <div className="card p-4 mb-6 flex flex-wrap gap-4 items-end">
