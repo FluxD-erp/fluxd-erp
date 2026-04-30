@@ -77,6 +77,7 @@ export const api = {
     lancamentos       : (params = {}) => req(`/financeiro/lancamentos?${new URLSearchParams(params)}`),
     criarLancamento   : (data)        => req('/financeiro/lancamentos', { method: 'POST', body: data }),
     atualizarLancamento: (id, data)   => req(`/financeiro/lancamentos/${id}`, { method: 'PUT', body: data }),
+    deletarLancamento  : (id)         => req(`/financeiro/lancamentos/${id}`, { method: 'DELETE' }),
 
     contasPagar        : (params = {}) => req(`/financeiro/contas-pagar?${new URLSearchParams(params)}`),
     criarContaPagar    : (data)        => req('/financeiro/contas-pagar', { method: 'POST', body: data }),

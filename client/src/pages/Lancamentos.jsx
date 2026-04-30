@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Search, Upload, Download, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { Plus, Search, Upload, Download, AlertCircle, CheckCircle2, X, Pencil, Trash2 } from 'lucide-react';
 import Papa from 'papaparse';
 import toast from 'react-hot-toast';
 import { api, fmt, fmtData } from '../services/api';
@@ -191,13 +191,20 @@ function ModalImportar({ open, onClose, onSave }) {
 }
 
 // ── Formulário manual ────────────────────────────────────────────
-function FormLancamento({ onSave, onClose, clientes, fornecedores, planoContas }) {
+function FormLancamento({ onSave, onClose, clientes, fornecedores, planoContas, lancamento }) {
+  const editando = !!lancamento;
   const [form, setForm] = useState({
-    tipo: 'RECEITA', descricao: '', valor: '',
-    data_competencia: new Date().toISOString().split('T')[0],
-    data_pagamento: '', status: 'PENDENTE',
-    conta_id: '', cliente_id: '', fornecedor_id: '',
-    numero_documento: '', observacao: '',
+    tipo            : lancamento?.tipo             || 'RECEITA',
+    descricao       : lancamento?.descricao        || '',
+    valor           : lancamento?.valor            || '',
+    data_competencia: lancamento?.data_competencia || new Date().toISOString().split('T')[0],
+    data_pagamento  : lancamento?.data_pagamento   || '',
+    status          : lancamento?.status           || 'PENDENTE',
+    conta_id        : lancamento?.conta_id         || '',
+    cliente_id      : lancamento?.cliente_id       || '',
+    fornecedor_id   : lancamento?.fornecedor_id    || '',
+    numero_documento: lancamento?.numero_documento || '',
+    observacao      : lancamento?.observacao       || '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -206,8 +213,13 @@ function FormLancamento({ onSave, onClose, clientes, fornecedores, planoContas }
     if (!form.descricao || !form.valor || !form.data_competencia)
       return toast.error('Preencha todos os campos obrigatórios');
     try {
-      await api.financeiro.criarLancamento({ ...form, valor: parseFloat(form.valor) });
-      toast.success('Lançamento criado!');
+      if (editando) {
+        await api.financeiro.atualizarLancamento(lancamento.id, { ...form, valor: parseFloat(form.valor) });
+        toast.success('Lançamento atualizado!');
+      } else {
+        await api.financeiro.criarLancamento({ ...form, valor: parseFloat(form.valor) });
+        toast.success('Lançamento criado!');
+      }
       onSave();
     } catch (e) { toast.error(e.message); }
   };
@@ -288,7 +300,7 @@ function FormLancamento({ onSave, onClose, clientes, fornecedores, planoContas }
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
-        <button type="submit" className="btn-primary">Salvar Lançamento</button>
+        <button type="submit" className="btn-primary">{editando ? 'Salvar Alterações' : 'Salvar Lançamento'}</button>
       </div>
     </form>
   );
@@ -302,6 +314,7 @@ export default function Lancamentos() {
   const [planoContas, setPlanoContas] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [showForm, setShowForm]       = useState(false);
+  const [editando, setEditando]       = useState(null);   // lançamento sendo editado
   const [showImport, setShowImport]   = useState(false);
   const [filtros, setFiltros]         = useState({ tipo: '', status: '', search: '' });
 
@@ -384,13 +397,14 @@ export default function Lancamentos() {
               <th className="px-5 py-3">Conta</th>
               <th className="px-5 py-3 text-right">Valor</th>
               <th className="px-5 py-3">Status</th>
+              <th className="px-5 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {loading ? (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-400">Carregando...</td></tr>
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Carregando...</td></tr>
             ) : lancamentos.length === 0 ? (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-400">Nenhum lançamento encontrado</td></tr>
+              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Nenhum lançamento encontrado</td></tr>
             ) : lancamentos.map(l => (
               <tr key={l.id} className="hover:bg-gray-50/50 transition-colors">
                 <td className="px-5 py-3 font-medium text-gray-800 max-w-xs truncate">{l.descricao}</td>
@@ -407,6 +421,27 @@ export default function Lancamentos() {
                     {l.status}
                   </span>
                 </td>
+                <td className="px-5 py-3">
+                  {l.status !== 'CANCELADO' && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setEditando(l)}
+                        className="text-gray-300 hover:text-unicri-orange transition-colors" title="Editar">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={async () => {
+                          if (!confirm('Cancelar este lançamento?')) return;
+                          try {
+                            await api.financeiro.deletarLancamento(l.id);
+                            toast.success('Lançamento cancelado');
+                            carregar();
+                          } catch (e) { toast.error(e.message); }
+                        }}
+                        className="text-gray-300 hover:text-red-400 transition-colors" title="Cancelar">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -417,6 +452,15 @@ export default function Lancamentos() {
         <FormLancamento
           clientes={clientes} fornecedores={fornecedores} planoContas={planoContas}
           onClose={() => setShowForm(false)} onSave={() => { setShowForm(false); carregar(); }}
+        />
+      </Modal>
+
+      <Modal open={!!editando} onClose={() => setEditando(null)} title="Editar Lançamento" size="lg">
+        <FormLancamento
+          clientes={clientes} fornecedores={fornecedores} planoContas={planoContas}
+          lancamento={editando}
+          onClose={() => setEditando(null)}
+          onSave={() => { setEditando(null); carregar(); }}
         />
       </Modal>
 
