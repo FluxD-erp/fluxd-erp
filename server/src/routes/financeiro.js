@@ -91,7 +91,8 @@ router.get('/lancamentos', async (req, res) => {
 router.post('/lancamentos', async (req, res) => {
   try {
     const { descricao, tipo, valor, data_competencia, data_pagamento, status,
-      conta_id, cliente_id, fornecedor_id, numero_documento, observacao } = req.body;
+      conta_id, cliente_id, fornecedor_id, numero_documento, observacao,
+      conciliado, ofx_fitid, ofx_memo } = req.body;
 
     const { data, error } = await db.from('lancamentos')
       .insert({
@@ -102,6 +103,9 @@ router.post('/lancamentos', async (req, res) => {
         cliente_id     : cliente_id || null,
         fornecedor_id  : fornecedor_id || null,
         numero_documento, observacao,
+        conciliado     : conciliado || false,
+        ofx_fitid      : ofx_fitid  || null,
+        ofx_memo       : ofx_memo   || null,
         empresa_id     : req.empresaId,
       })
       .select()
@@ -117,19 +121,25 @@ router.post('/lancamentos', async (req, res) => {
 router.put('/lancamentos/:id', async (req, res) => {
   try {
     const { descricao, tipo, valor, data_competencia, data_pagamento, status,
-      conta_id, cliente_id, fornecedor_id, numero_documento, observacao } = req.body;
+      conta_id, cliente_id, fornecedor_id, numero_documento, observacao,
+      conciliado, ofx_fitid, ofx_memo } = req.body;
+
+    const update = {
+      descricao, tipo, valor, data_competencia,
+      data_pagamento : data_pagamento || null,
+      status,
+      conta_id       : conta_id || null,
+      cliente_id     : cliente_id || null,
+      fornecedor_id  : fornecedor_id || null,
+      numero_documento, observacao,
+      atualizado_em  : new Date().toISOString(),
+    };
+    if (conciliado !== undefined) update.conciliado = conciliado;
+    if (ofx_fitid  !== undefined) update.ofx_fitid  = ofx_fitid;
+    if (ofx_memo   !== undefined) update.ofx_memo   = ofx_memo;
 
     const { error } = await db.from('lancamentos')
-      .update({
-        descricao, tipo, valor, data_competencia,
-        data_pagamento : data_pagamento || null,
-        status,
-        conta_id       : conta_id || null,
-        cliente_id     : cliente_id || null,
-        fornecedor_id  : fornecedor_id || null,
-        numero_documento, observacao,
-        atualizado_em  : new Date().toISOString(),
-      })
+      .update(update)
       .eq('id', req.params.id);
 
     if (error) throw error;
@@ -152,32 +162,10 @@ router.delete('/lancamentos/:id', async (req, res) => {
 });
 
 // ----------------------------------------------------------------
-// PATCH /lancamentos/:id/conciliar
-// Marca um lançamento como conciliado (vincula ao OFX)
-// Body: { ofx_fitid, ofx_memo, conciliado }
-// ----------------------------------------------------------------
-router.patch('/lancamentos/:id/conciliar', async (req, res) => {
-  try {
-    const { ofx_fitid, ofx_memo, conciliado = true } = req.body;
-    const { error } = await db.from('lancamentos')
-      .update({
-        conciliado,
-        ofx_fitid    : conciliado ? ofx_fitid : null,
-        ofx_memo     : conciliado ? ofx_memo  : null,
-        atualizado_em: new Date().toISOString(),
-      })
-      .eq('id', req.params.id)
-      .eq('empresa_id', req.empresaId);
-    if (error) throw error;
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// PATCH /lancamentos/conciliar-bulk
-// Concilia múltiplos pares de uma vez
+// PATCH /lancamentos/conciliar-bulk  ← DEVE vir ANTES do /:id para o Express não
+// confundir "conciliar-bulk" como parâmetro :id
 // Body: { pares: [{ lancamento_id, ofx_fitid, ofx_memo }] }
+// ----------------------------------------------------------------
 router.patch('/lancamentos/conciliar-bulk', async (req, res) => {
   try {
     const { pares } = req.body;
@@ -195,6 +183,26 @@ router.patch('/lancamentos/conciliar-bulk', async (req, res) => {
     if (erros.length) throw new Error(erros[0].error.message);
 
     res.json({ success: true, conciliados: pares.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /lancamentos/:id/conciliar — concilia/desconcilia um único lançamento
+router.patch('/lancamentos/:id/conciliar', async (req, res) => {
+  try {
+    const { ofx_fitid, ofx_memo, conciliado = true } = req.body;
+    const { error } = await db.from('lancamentos')
+      .update({
+        conciliado,
+        ofx_fitid    : conciliado ? ofx_fitid : null,
+        ofx_memo     : conciliado ? ofx_memo  : null,
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq('id', req.params.id)
+      .eq('empresa_id', req.empresaId);
+    if (error) throw error;
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
