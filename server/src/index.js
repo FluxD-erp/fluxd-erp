@@ -23,6 +23,8 @@ app.use(cors({
   },
   credentials: true,
 }));
+// Webhook Stripe precisa de raw body — montar ANTES do express.json()
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 // Rotas
@@ -31,6 +33,7 @@ app.use('/api',            require('./routes/entidades'));
 app.use('/api/financeiro', require('./routes/financeiro'));
 app.use('/api/admin',      require('./routes/admin'));
 app.use('/api/empresas',   require('./routes/empresas'));
+app.use('/api/billing',    require('./routes/billing'));
 app.get('/api/health',     (req, res) => res.json({ status: 'ok' }));
 
 // Serve o build do frontend em produção

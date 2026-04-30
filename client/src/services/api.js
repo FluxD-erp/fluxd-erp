@@ -88,9 +88,17 @@ export const api = {
     receberConta         : (id, data)    => req(`/financeiro/contas-receber/${id}/receber`, { method: 'PATCH', body: data }),
     atualizarContaReceber: (id, data)    => req(`/financeiro/contas-receber/${id}`, { method: 'PUT', body: data }),
 
+    importar   : (rows)      => req('/financeiro/importar', { method: 'POST', body: { rows } }),
+
     planoContas: () => req('/financeiro/plano-contas'),
     fluxoCaixa : (params = {}) => req(`/financeiro/fluxo-caixa?${new URLSearchParams(params)}`),
     dre        : (params = {}) => req(`/financeiro/dre?${new URLSearchParams(params)}`),
+  },
+
+  // Billing (Stripe)
+  billing: {
+    createCheckout: (data) => req('/billing/create-checkout', { method: 'POST', body: data }),
+    portal        : (data) => req('/billing/portal',          { method: 'POST', body: data }),
   },
 };
 

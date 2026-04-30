@@ -27,6 +27,7 @@ import Passivos    from './pages/Passivos';
 
 // Configurações (todas as seções admin inclusas)
 import Configuracoes from './pages/Configuracoes';
+import Planos        from './pages/Planos';
 
 /**
  * Guard que redireciona para /setup se o usuário não tiver empresa ativa.
@@ -95,6 +96,9 @@ export default function App() {
                     <Route path="/fornecedores"element={<ProtectedRoute requiredRole="FINANCEIRO"><Fornecedores /></ProtectedRoute>} />
                     <Route path="/plano-contas"element={<ProtectedRoute requiredRole="FINANCEIRO"><PlanoContas /></ProtectedRoute>} />
                     <Route path="/passivos"    element={<ProtectedRoute requiredRole="FINANCEIRO"><Passivos /></ProtectedRoute>} />
+
+                    {/* Planos e Billing */}
+                    <Route path="/planos"         element={<Planos />} />
 
                     {/* Configurações (acesso geral; seções admin-only controladas internamente) */}
                     <Route path="/configuracoes"  element={<Configuracoes />} />

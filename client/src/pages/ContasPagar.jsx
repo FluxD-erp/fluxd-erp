@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, CheckCircle, Filter } from 'lucide-react';
+import { Plus, Search, CheckCircle, Repeat, Layers } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, fmt, fmtData } from '../services/api';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 
 const STATUS_OPTIONS = ['', 'ABERTA', 'PAGA', 'VENCIDA', 'PARCIAL', 'CANCELADA'];
+const FREQUENCIAS = ['SEMANAL','QUINZENAL','MENSAL','BIMESTRAL','TRIMESTRAL','SEMESTRAL','ANUAL'];
 
 function StatusBadge({ status }) {
   const map = {
@@ -20,7 +21,11 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
     fornecedor_id: '', descricao: '', valor_original: '',
     data_emissao: new Date().toISOString().split('T')[0],
     data_vencimento: '', numero_documento: '', observacao: '',
+    conta_id: '',
   });
+  const [modo, setModo] = useState('simples'); // 'simples' | 'parcelado' | 'recorrente'
+  const [numParcelas, setNumParcelas] = useState('2');
+  const [frequencia, setFrequencia] = useState('MENSAL');
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -29,14 +34,76 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
     if (!form.fornecedor_id || !form.descricao || !form.valor_original || !form.data_vencimento)
       return toast.error('Preencha todos os campos obrigatórios');
     try {
-      await api.financeiro.criarContaPagar({ ...form, valor_original: parseFloat(form.valor_original) });
-      toast.success('Conta a pagar cadastrada!');
+      const payload = {
+        ...form,
+        valor_original: parseFloat(form.valor_original),
+        parcelado   : modo === 'parcelado',
+        recorrente  : modo === 'recorrente',
+        num_parcelas: modo === 'parcelado' ? parseInt(numParcelas) : 1,
+        frequencia  : modo !== 'simples' ? frequencia : null,
+      };
+      const res = await api.financeiro.criarContaPagar(payload);
+      if (res?.parcelas) {
+        toast.success(`${res.parcelas} parcelas cadastradas!`);
+      } else {
+        toast.success(modo === 'recorrente' ? 'Conta recorrente cadastrada!' : 'Conta a pagar cadastrada!');
+      }
       onSave();
     } catch (e) { toast.error(e.message); }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Tipo */}
+      <div className="flex gap-2">
+        {[
+          { val: 'simples',    label: 'Simples' },
+          { val: 'parcelado',  label: 'Parcelado' },
+          { val: 'recorrente', label: 'Recorrente' },
+        ].map(o => (
+          <button key={o.val} type="button"
+            onClick={() => setModo(o.val)}
+            className={`flex-1 py-2 px-3 text-sm rounded-lg border transition-colors font-medium
+              ${modo === o.val
+                ? 'bg-unicri-navy text-white border-unicri-navy'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-unicri-navy/40'}`}>
+            {o.val === 'parcelado'  && <Layers size={13} className="inline mr-1" />}
+            {o.val === 'recorrente' && <Repeat size={13} className="inline mr-1" />}
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Opções de parcelamento / recorrência */}
+      {modo === 'parcelado' && (
+        <div className="grid grid-cols-2 gap-4 p-3 bg-blue-50 rounded-xl">
+          <div>
+            <label className="label">Nº de Parcelas *</label>
+            <input className="input" type="number" min="2" max="360" value={numParcelas}
+              onChange={e => setNumParcelas(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Frequência *</label>
+            <select className="input" value={frequencia} onChange={e => setFrequencia(e.target.value)}>
+              {FREQUENCIAS.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+          <div className="col-span-2 text-xs text-blue-700">
+            Serão criadas <strong>{numParcelas || '?'}</strong> parcelas de&nbsp;
+            <strong>{form.valor_original ? fmt(parseFloat(form.valor_original) / (parseInt(numParcelas) || 1)) : 'R$ —'}</strong> cada, vencendo a cada {frequencia.toLowerCase()}.
+          </div>
+        </div>
+      )}
+      {modo === 'recorrente' && (
+        <div className="p-3 bg-amber-50 rounded-xl">
+          <label className="label">Frequência de repetição *</label>
+          <select className="input" value={frequencia} onChange={e => setFrequencia(e.target.value)}>
+            {FREQUENCIAS.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <p className="text-xs text-amber-700 mt-2">Ao quitar esta conta, a próxima ocorrência é gerada automaticamente.</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
           <label className="label">Fornecedor *</label>
@@ -50,7 +117,7 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
           <input className="input" value={form.descricao} onChange={e => set('descricao', e.target.value)} required />
         </div>
         <div>
-          <label className="label">Valor Original (R$) *</label>
+          <label className="label">Valor {modo === 'parcelado' ? 'Total' : 'Original'} (R$) *</label>
           <input className="input" type="number" step="0.01" min="0.01" value={form.valor_original}
             onChange={e => set('valor_original', e.target.value)} required />
         </div>
@@ -63,12 +130,12 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
           <input className="input" type="date" value={form.data_emissao} onChange={e => set('data_emissao', e.target.value)} required />
         </div>
         <div>
-          <label className="label">Data Vencimento *</label>
+          <label className="label">{modo === 'parcelado' ? 'Venc. 1ª Parcela *' : 'Data Vencimento *'}</label>
           <input className="input" type="date" value={form.data_vencimento} onChange={e => set('data_vencimento', e.target.value)} required />
         </div>
         <div className="sm:col-span-2">
           <label className="label">Conta Contábil</label>
-          <select className="input" value={form.conta_id || ''} onChange={e => set('conta_id', e.target.value)}>
+          <select className="input" value={form.conta_id} onChange={e => set('conta_id', e.target.value)}>
             <option value="">Nenhuma</option>
             {planoContas.filter(c => c.tipo === 'DESPESA').map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}
           </select>
@@ -80,7 +147,9 @@ function FormConta({ onSave, onClose, fornecedores, planoContas }) {
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
-        <button type="submit" className="btn-primary">Salvar Conta</button>
+        <button type="submit" className="btn-primary">
+          {modo === 'parcelado' ? `Criar ${numParcelas || '?'} Parcelas` : 'Salvar Conta'}
+        </button>
       </div>
     </form>
   );
@@ -232,8 +301,16 @@ export default function ContasPagar() {
             ) : contas.map(c => (
               <tr key={c.id} className={`hover:bg-gray-50/50 transition-colors ${c.status === 'VENCIDA' ? 'bg-red-50/30' : ''}`}>
                 <td className="px-5 py-3 font-medium text-gray-800 max-w-xs">
-                  <div className="truncate">{c.descricao}</div>
-                  {c.numero_documento && <div className="text-xs text-gray-400">Doc: {c.numero_documento}</div>}
+                  <div className="truncate flex items-center gap-1.5">
+                    {c.recorrente && <Repeat size={12} className="text-amber-500 shrink-0" title="Recorrente" />}
+                    {c.parcelado  && <Layers size={12} className="text-blue-500 shrink-0" title={`Parcela ${c.parcela_atual}/${c.num_parcelas}`} />}
+                    <span>{c.descricao}</span>
+                  </div>
+                  <div className="flex gap-2 text-xs text-gray-400 mt-0.5">
+                    {c.numero_documento && <span>Doc: {c.numero_documento}</span>}
+                    {c.parcelado && <span className="text-blue-500 font-medium">{c.parcela_atual}/{c.num_parcelas}</span>}
+                    {c.recorrente && <span className="text-amber-500 font-medium">{c.frequencia}</span>}
+                  </div>
                 </td>
                 <td className="px-5 py-3 text-gray-600">{c.fornecedor_nome}</td>
                 <td className={`px-5 py-3 ${c.status === 'VENCIDA' ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>

@@ -1,37 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, DollarSign, AlertTriangle,
-  Clock, CheckCircle, ArrowUpRight, ArrowDownRight
+  Clock, CheckCircle, ArrowUpRight, ArrowDownRight, Wallet, Target, Pencil
 } from 'lucide-react';
 import { api, fmt, fmtData, fmtMes } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { BRAND, CHART_COLORS } from '../theme';
+import OnboardingChecklist from '../components/OnboardingChecklist';
 
 const COLORS = CHART_COLORS;
 
-function KpiCard({ title, value, subtitle, icon: Icon, color, trend, trendLabel }) {
-  const colors = {
+// ── KPI Card ────────────────────────────────────────────────────
+function KpiCard({ title, value, subtitle, icon: Icon, color, pct }) {
+  const palette = {
     orange: 'bg-unicri-orange/10 text-unicri-orange',
-    navy: 'bg-unicri-navy/10 text-unicri-navy',
-    green: 'bg-emerald-100 text-emerald-600',
-    red: 'bg-red-100 text-red-600',
+    navy  : 'bg-unicri-navy/10 text-unicri-navy',
+    green : 'bg-emerald-100 text-emerald-600',
+    red   : 'bg-red-100 text-red-600',
     yellow: 'bg-yellow-100 text-yellow-600',
+    teal  : 'bg-teal-100 text-teal-600',
   };
-  const trendColor = trend > 0 ? 'text-emerald-600' : trend < 0 ? 'text-red-500' : 'text-gray-400';
+  const trendColor = pct > 0 ? 'text-emerald-600' : pct < 0 ? 'text-red-500' : 'text-gray-400';
 
   return (
     <div className="card p-5">
       <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${colors[color]}`}>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${palette[color]}`}>
           <Icon size={20} />
         </div>
-        {trendLabel && (
+        {pct !== null && pct !== undefined && (
           <div className={`flex items-center gap-1 text-xs font-semibold ${trendColor}`}>
-            {trend >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-            {trendLabel}
+            {pct >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+            {Math.abs(pct)}% vs mês ant.
           </div>
         )}
       </div>
@@ -58,9 +62,65 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
+// ── Meta Mensal (inline edit) ────────────────────────────────────
+function MetaMensal({ empresaId, receitaMes }) {
+  const key   = `fluxd_meta_${empresaId}`;
+  const [meta, setMeta]       = useState(() => parseFloat(localStorage.getItem(key) || '0'));
+  const [editing, setEditing] = useState(false);
+  const [input, setInput]     = useState('');
+  const ref = useRef();
+
+  const salvar = () => {
+    const v = parseFloat(input.replace(',', '.'));
+    if (!isNaN(v) && v > 0) { setMeta(v); localStorage.setItem(key, v); }
+    setEditing(false);
+  };
+
+  if (!meta && !editing) {
+    return (
+      <button onClick={() => { setInput(''); setEditing(true); }}
+        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-unicri-orange transition-colors">
+        <Target size={13} /> Definir meta mensal
+      </button>
+    );
+  }
+
+  const pct = meta > 0 ? Math.min(100, Math.round((receitaMes / meta) * 100)) : 0;
+
+  return (
+    <div className="flex items-center gap-3">
+      <Target size={14} className="text-unicri-orange shrink-0" />
+      {editing ? (
+        <div className="flex items-center gap-1">
+          <input ref={ref} type="number" className="input py-1 px-2 text-xs w-32" placeholder="Meta em R$"
+            value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') salvar(); if (e.key === 'Escape') setEditing(false); }}
+            autoFocus />
+          <button onClick={salvar} className="text-xs btn-primary py-1 px-2">OK</button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 flex-1">
+          <span className="text-xs text-gray-500">Meta: <strong>{fmt(meta)}</strong></span>
+          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden min-w-16">
+            <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-emerald-500' : 'bg-unicri-orange'}`}
+              style={{ width: `${pct}%` }} />
+          </div>
+          <span className={`text-xs font-semibold ${pct >= 100 ? 'text-emerald-600' : 'text-unicri-orange'}`}>{pct}%</span>
+          <button onClick={() => { setInput(meta); setEditing(true); }}
+            className="text-gray-300 hover:text-gray-500">
+            <Pencil size={11} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Dashboard ────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [kpis, setKpis] = useState(null);
-  const [fluxo, setFluxo] = useState([]);
+  const { empresaAtiva } = useAuth();
+  const [kpis, setKpis]       = useState(null);
+  const [fluxo, setFluxo]     = useState([]);
   const [despesas, setDespesas] = useState([]);
   const [ultimos, setUltimos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -97,10 +157,16 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard Financeiro</h1>
-        <p className="text-gray-500 text-sm mt-1">Visão geral do desempenho financeiro</p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard Financeiro</h1>
+          <p className="text-gray-500 text-sm mt-1">Visão geral do desempenho financeiro</p>
+        </div>
+        <MetaMensal empresaId={empresaAtiva?.id} receitaMes={kpis?.receita_mes || 0} />
       </div>
+
+      {/* Onboarding */}
+      <OnboardingChecklist kpis={kpis} lancamentos={ultimos} />
 
       {/* Alerta de vencidas */}
       {kpis?.vencidas?.qtd > 0 && (
@@ -113,23 +179,21 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* KPIs */}
+      {/* KPIs — linha 1 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Receita do Mês"
           value={fmt(kpis?.receita_mes)}
           icon={TrendingUp}
           color="green"
-          trendLabel="+5,2%"
-          trend={1}
+          pct={kpis?.receita_pct}
         />
         <KpiCard
           title="Despesa do Mês"
           value={fmt(kpis?.despesa_mes)}
           icon={TrendingDown}
           color="red"
-          trendLabel="-2,1%"
-          trend={-1}
+          pct={kpis?.despesa_pct !== null && kpis?.despesa_pct !== undefined ? -kpis.despesa_pct : null}
         />
         <KpiCard
           title="Resultado do Mês"
@@ -139,15 +203,23 @@ export default function Dashboard() {
           color={kpis?.resultado_mes >= 0 ? 'orange' : 'red'}
         />
         <KpiCard
+          title="Saldo em Caixa"
+          value={fmt(kpis?.saldo_caixa)}
+          subtitle="Acumulado real (pagos)"
+          icon={Wallet}
+          color={kpis?.saldo_caixa >= 0 ? 'teal' : 'red'}
+        />
+      </div>
+
+      {/* KPIs — linha 2 */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
           title="A Receber"
           value={fmt(kpis?.contas_receber?.total)}
           subtitle={`${kpis?.contas_receber?.qtd || 0} título(s) em aberto`}
           icon={Clock}
           color="navy"
         />
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="A Pagar"
           value={fmt(kpis?.contas_pagar?.total)}
@@ -165,20 +237,13 @@ export default function Dashboard() {
         <KpiCard
           title="Vence em 7 dias"
           value={`${kpis?.a_vencer_7dias || 0} conta(s)`}
-          icon={Clock}
-          color="yellow"
-        />
-        <KpiCard
-          title="Situação"
-          value={kpis?.resultado_mes >= 0 ? 'Positiva' : 'Atenção'}
           icon={CheckCircle}
-          color={kpis?.resultado_mes >= 0 ? 'green' : 'red'}
+          color="yellow"
         />
       </div>
 
-      {/* Gráficos principais */}
+      {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Receitas x Despesas */}
         <div className="card p-5 lg:col-span-2">
           <h2 className="text-sm font-bold text-gray-700 mb-4">Receitas × Despesas — Últimos 6 meses</h2>
           <ResponsiveContainer width="100%" height={260}>
@@ -195,7 +260,6 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Distribuição de Despesas */}
         <div className="card p-5">
           <h2 className="text-sm font-bold text-gray-700 mb-4">Distribuição de Despesas</h2>
           {despesas.length > 0 ? (
@@ -241,6 +305,7 @@ export default function Dashboard() {
             <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false}
               tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
             <Tooltip content={<CustomTooltip />} />
+            <ReferenceLine y={0} stroke="#E5E7EB" strokeDasharray="4 4" />
             <Area type="monotone" dataKey="resultado" name="Resultado" stroke={BRAND.teal}
               fill="url(#gradRes)" strokeWidth={2} dot={{ fill: BRAND.teal, r: 4 }} />
           </AreaChart>
@@ -249,7 +314,7 @@ export default function Dashboard() {
 
       {/* Últimos lançamentos */}
       <div className="card">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="text-sm font-bold text-gray-700">Últimos Lançamentos</h2>
         </div>
         <div className="overflow-x-auto">

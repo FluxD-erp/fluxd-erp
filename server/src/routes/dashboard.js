@@ -54,16 +54,45 @@ router.get('/kpis', async (req, res) => {
         .lte('data_vencimento', em7Dias),
     ]);
 
+    // Mês anterior para comparativo
+    const mesAntD  = new Date(); mesAntD.setMonth(mesAntD.getMonth() - 1);
+    const mesAntStr = mesAntD.toISOString().slice(0, 7);
+    const inicioMesAnt = mesAntStr + '-01';
+    const fimMesAnt    = new Date(mesAntD.getFullYear(), mesAntD.getMonth() + 1, 0).toISOString().split('T')[0];
+
+    const [
+      { data: recAntRows },
+      { data: despAntRows },
+      { data: saldoRecRows },
+      { data: saldoDespRows },
+    ] = await Promise.all([
+      db.from('lancamentos').select('valor').eq('empresa_id', eid).eq('tipo','RECEITA').eq('status','PAGO')
+        .gte('data_competencia', inicioMesAnt).lte('data_competencia', fimMesAnt),
+      db.from('lancamentos').select('valor').eq('empresa_id', eid).eq('tipo','DESPESA').eq('status','PAGO')
+        .gte('data_competencia', inicioMesAnt).lte('data_competencia', fimMesAnt),
+      db.from('lancamentos').select('valor').eq('empresa_id', eid).eq('tipo','RECEITA').eq('status','PAGO'),
+      db.from('lancamentos').select('valor').eq('empresa_id', eid).eq('tipo','DESPESA').eq('status','PAGO'),
+    ]);
+
     const sum     = (rows, field) => (rows || []).reduce((acc, r) => acc + Number(r[field] || 0), 0);
     const sumDiff = (rows, a, b)  => (rows || []).reduce((acc, r) => acc + Number(r[a] || 0) - Number(r[b] || 0), 0);
+    const pct = (atual, ant) => ant === 0 ? null : Math.round(((atual - ant) / ant) * 100);
 
-    const receitaMes = sum(receitasRows, 'valor');
-    const despesaMes = sum(despesasRows, 'valor');
+    const receitaMes    = sum(receitasRows, 'valor');
+    const despesaMes    = sum(despesasRows, 'valor');
+    const receitaMesAnt = sum(recAntRows,   'valor');
+    const despesaMesAnt = sum(despAntRows,  'valor');
+    const saldoCaixa    = sum(saldoRecRows, 'valor') - sum(saldoDespRows, 'valor');
 
     res.json({
-      receita_mes   : receitaMes,
-      despesa_mes   : despesaMes,
-      resultado_mes : receitaMes - despesaMes,
+      receita_mes     : receitaMes,
+      despesa_mes     : despesaMes,
+      resultado_mes   : receitaMes - despesaMes,
+      receita_mes_ant : receitaMesAnt,
+      despesa_mes_ant : despesaMesAnt,
+      receita_pct     : pct(receitaMes, receitaMesAnt),
+      despesa_pct     : pct(despesaMes, despesaMesAnt),
+      saldo_caixa     : saldoCaixa,
       contas_pagar  : { total: sumDiff(pagarAberto,  'valor_original', 'valor_pago'),      qtd: (pagarAberto  || []).length },
       contas_receber: { total: sumDiff(receberAberto, 'valor_original', 'valor_recebido'), qtd: (receberAberto || []).length },
       vencidas      : { total: sumDiff(vencidasRows,  'valor_original', 'valor_pago'),      qtd: (vencidasRows  || []).length },

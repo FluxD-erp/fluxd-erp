@@ -7,6 +7,49 @@ const { requireEmpresa } = require('../middleware/empresa');
 // Todas as rotas financeiras requerem auth + empresa selecionada
 router.use(requireAuth, requireEmpresa);
 
+// ── Helpers ─────────────────────────────────────────────────
+/** Avança uma data por N intervalos de acordo com a frequência */
+function proximaData(dataStr, frequencia, n = 1) {
+  const d = new Date(dataStr + 'T12:00:00');
+  const freq = {
+    SEMANAL:     () => d.setDate(d.getDate() + 7 * n),
+    QUINZENAL:   () => d.setDate(d.getDate() + 15 * n),
+    MENSAL:      () => { const dia = d.getDate(); d.setMonth(d.getMonth() + n); if (d.getDate() !== dia) d.setDate(0); },
+    BIMESTRAL:   () => { const dia = d.getDate(); d.setMonth(d.getMonth() + 2 * n); if (d.getDate() !== dia) d.setDate(0); },
+    TRIMESTRAL:  () => { const dia = d.getDate(); d.setMonth(d.getMonth() + 3 * n); if (d.getDate() !== dia) d.setDate(0); },
+    SEMESTRAL:   () => { const dia = d.getDate(); d.setMonth(d.getMonth() + 6 * n); if (d.getDate() !== dia) d.setDate(0); },
+    ANUAL:       () => { const dia = d.getDate(); d.setFullYear(d.getFullYear() + n); if (d.getDate() !== dia) d.setDate(0); },
+  };
+  (freq[frequencia] || freq.MENSAL)();
+  return d.toISOString().split('T')[0];
+}
+
+/** Gera array de parcelas para insert em bulk */
+function gerarParcelas(base, numParcelas, frequencia, empresaId) {
+  const grupoId = crypto.randomUUID();
+  const valorParcela = Math.round((base.valor_original / numParcelas) * 100) / 100;
+  // Ajusta última parcela para absorver diferença de arredondamento
+  const totalParcelas = valorParcela * numParcelas;
+  const diff = Math.round((base.valor_original - totalParcelas) * 100) / 100;
+
+  return Array.from({ length: numParcelas }, (_, i) => ({
+    fornecedor_id    : base.fornecedor_id || null,
+    cliente_id       : base.cliente_id   || null,
+    descricao        : `${base.descricao} (${i + 1}/${numParcelas})`,
+    valor_original   : i === numParcelas - 1 ? valorParcela + diff : valorParcela,
+    data_emissao     : base.data_emissao,
+    data_vencimento  : i === 0 ? base.data_vencimento : proximaData(base.data_vencimento, frequencia, i),
+    numero_documento : base.numero_documento || null,
+    conta_id         : base.conta_id || null,
+    observacao       : base.observacao || null,
+    parcelado        : true,
+    num_parcelas     : numParcelas,
+    parcela_atual    : i + 1,
+    grupo_id         : grupoId,
+    empresa_id       : empresaId,
+  }));
+}
+
 // ----------------------------------------------------------------
 // LANÇAMENTOS
 // ----------------------------------------------------------------
@@ -151,13 +194,30 @@ router.get('/contas-pagar', async (req, res) => {
 router.post('/contas-pagar', async (req, res) => {
   try {
     const { fornecedor_id, descricao, valor_original, data_emissao, data_vencimento,
-      numero_documento, conta_id, observacao } = req.body;
+      numero_documento, conta_id, observacao,
+      parcelado, num_parcelas, frequencia,
+      recorrente } = req.body;
 
+    const base = {
+      fornecedor_id, descricao, valor_original: parseFloat(valor_original),
+      data_emissao, data_vencimento, numero_documento, conta_id: conta_id || null, observacao,
+    };
+
+    // ── Parcelado: cria N registros em bulk ──────────────────
+    if (parcelado && num_parcelas > 1) {
+      const parcelas = gerarParcelas(base, parseInt(num_parcelas), frequencia || 'MENSAL', req.empresaId);
+      const { data, error } = await db.from('contas_pagar').insert(parcelas).select();
+      if (error) throw error;
+      return res.status(201).json({ parcelas: data.length, grupo_id: data[0]?.grupo_id });
+    }
+
+    // ── Recorrente ou conta única ────────────────────────────
     const { data, error } = await db.from('contas_pagar')
       .insert({
-        fornecedor_id, descricao, valor_original, data_emissao, data_vencimento,
-        numero_documento, conta_id: conta_id || null, observacao,
-        empresa_id: req.empresaId,
+        ...base,
+        recorrente : recorrente || false,
+        frequencia : recorrente ? (frequencia || 'MENSAL') : null,
+        empresa_id : req.empresaId,
       })
       .select()
       .single();
@@ -174,7 +234,7 @@ router.patch('/contas-pagar/:id/pagar', async (req, res) => {
     const { valor_pago, data_pagamento } = req.body;
 
     const { data: conta, error: fetchErr } = await db.from('contas_pagar')
-      .select('valor_original, valor_pago')
+      .select('*')
       .eq('id', req.params.id)
       .single();
 
@@ -193,6 +253,26 @@ router.patch('/contas-pagar/:id/pagar', async (req, res) => {
       .eq('id', req.params.id);
 
     if (error) throw error;
+
+    // ── Recorrente: gera próxima ocorrência ao quitar ────────
+    if (novoStatus === 'PAGA' && conta.recorrente && conta.frequencia) {
+      const proxVenc = proximaData(conta.data_vencimento, conta.frequencia);
+      await db.from('contas_pagar').insert({
+        fornecedor_id   : conta.fornecedor_id,
+        descricao       : conta.descricao,
+        valor_original  : conta.valor_original,
+        data_emissao    : new Date().toISOString().split('T')[0],
+        data_vencimento : proxVenc,
+        numero_documento: conta.numero_documento,
+        conta_id        : conta.conta_id,
+        observacao      : conta.observacao,
+        recorrente      : true,
+        frequencia      : conta.frequencia,
+        grupo_id        : conta.grupo_id || conta.id,
+        empresa_id      : conta.empresa_id,
+      });
+    }
+
     res.json({ success: true, status: novoStatus });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -264,13 +344,28 @@ router.get('/contas-receber', async (req, res) => {
 router.post('/contas-receber', async (req, res) => {
   try {
     const { cliente_id, descricao, valor_original, data_emissao, data_vencimento,
-      numero_documento, conta_id, observacao } = req.body;
+      numero_documento, conta_id, observacao,
+      parcelado, num_parcelas, frequencia,
+      recorrente } = req.body;
+
+    const base = {
+      cliente_id, descricao, valor_original: parseFloat(valor_original),
+      data_emissao, data_vencimento, numero_documento, conta_id: conta_id || null, observacao,
+    };
+
+    if (parcelado && num_parcelas > 1) {
+      const parcelas = gerarParcelas(base, parseInt(num_parcelas), frequencia || 'MENSAL', req.empresaId);
+      const { data, error } = await db.from('contas_receber').insert(parcelas).select();
+      if (error) throw error;
+      return res.status(201).json({ parcelas: data.length, grupo_id: data[0]?.grupo_id });
+    }
 
     const { data, error } = await db.from('contas_receber')
       .insert({
-        cliente_id, descricao, valor_original, data_emissao, data_vencimento,
-        numero_documento, conta_id: conta_id || null, observacao,
-        empresa_id: req.empresaId,
+        ...base,
+        recorrente : recorrente || false,
+        frequencia : recorrente ? (frequencia || 'MENSAL') : null,
+        empresa_id : req.empresaId,
       })
       .select()
       .single();
@@ -287,7 +382,7 @@ router.patch('/contas-receber/:id/receber', async (req, res) => {
     const { valor_recebido, data_recebimento } = req.body;
 
     const { data: conta, error: fetchErr } = await db.from('contas_receber')
-      .select('valor_original, valor_recebido')
+      .select('*')
       .eq('id', req.params.id)
       .single();
 
@@ -306,6 +401,26 @@ router.patch('/contas-receber/:id/receber', async (req, res) => {
       .eq('id', req.params.id);
 
     if (error) throw error;
+
+    // ── Recorrente: gera próxima ocorrência ao quitar ────────
+    if (novoStatus === 'RECEBIDA' && conta.recorrente && conta.frequencia) {
+      const proxVenc = proximaData(conta.data_vencimento, conta.frequencia);
+      await db.from('contas_receber').insert({
+        cliente_id      : conta.cliente_id,
+        descricao       : conta.descricao,
+        valor_original  : conta.valor_original,
+        data_emissao    : new Date().toISOString().split('T')[0],
+        data_vencimento : proxVenc,
+        numero_documento: conta.numero_documento,
+        conta_id        : conta.conta_id,
+        observacao      : conta.observacao,
+        recorrente      : true,
+        frequencia      : conta.frequencia,
+        grupo_id        : conta.grupo_id || conta.id,
+        empresa_id      : conta.empresa_id,
+      });
+    }
+
     res.json({ success: true, status: novoStatus });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -449,6 +564,60 @@ router.get('/dre', async (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ----------------------------------------------------------------
+// POST /financeiro/importar — importação bulk de lançamentos via CSV
+// Body: { rows: [{ descricao, tipo, valor, data_competencia, status?, observacao? }] }
+// ----------------------------------------------------------------
+router.post('/importar', async (req, res) => {
+  try {
+    const { rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0)
+      return res.status(400).json({ error: 'Nenhuma linha para importar.' });
+    if (rows.length > 1000)
+      return res.status(400).json({ error: 'Limite de 1000 linhas por importação.' });
+
+    const TIPOS   = ['RECEITA', 'DESPESA'];
+    const STATUS  = ['PENDENTE', 'PAGO', 'CANCELADO'];
+
+    const registros = rows.map((r, i) => {
+      const tipo   = (r.tipo   || '').toString().toUpperCase().trim();
+      const status = (r.status || 'PENDENTE').toString().toUpperCase().trim();
+      const valor  = parseFloat((r.valor || '').toString().replace(',', '.'));
+      const data   = (r.data_competencia || r.data || '').toString().trim();
+
+      if (!r.descricao) throw new Error(`Linha ${i + 2}: campo "descricao" obrigatório.`);
+      if (!TIPOS.includes(tipo)) throw new Error(`Linha ${i + 2}: tipo "${tipo}" inválido (RECEITA ou DESPESA).`);
+      if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new Error(`Linha ${i + 2}: data_competencia inválida (use AAAA-MM-DD).`);
+      if (isNaN(valor) || valor <= 0) throw new Error(`Linha ${i + 2}: valor inválido.`);
+
+      return {
+        descricao       : r.descricao.toString().trim(),
+        tipo,
+        valor,
+        data_competencia: data,
+        data_pagamento  : status === 'PAGO' ? (r.data_pagamento || data) : null,
+        status          : STATUS.includes(status) ? status : 'PENDENTE',
+        observacao      : r.observacao ? r.observacao.toString().trim() : null,
+        empresa_id      : req.empresaId,
+      };
+    });
+
+    // Insere em lotes de 100 para não estourar limites
+    const LOTE = 100;
+    let total  = 0;
+    for (let i = 0; i < registros.length; i += LOTE) {
+      const lote = registros.slice(i, i + LOTE);
+      const { error } = await db.from('lancamentos').insert(lote);
+      if (error) throw error;
+      total += lote.length;
+    }
+
+    res.json({ success: true, importados: total });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 

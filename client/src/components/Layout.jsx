@@ -4,7 +4,7 @@ import {
   LayoutDashboard, TrendingUp, TrendingDown, ArrowLeftRight,
   Users, Truck, FileText, BarChart2, Menu, X, ChevronRight,
   Bell, Settings, LogOut, AlertTriangle, CalendarDays,
-  Building2, ChevronDown, Plus, Check, User, ExternalLink,
+  Building2, ChevronDown, Plus, Check, User, ExternalLink, Zap,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api, fmt } from '../services/api';
@@ -32,6 +32,7 @@ const NAV = [
   },
   { label: 'Passivos Especiais', icon: AlertTriangle, to: '/passivos' },
   { label: 'Relatórios',         icon: BarChart2,     to: '/relatorios' },
+  { label: 'Planos',             icon: Zap,           to: '/planos' },
 ];
 
 // ─────────────────────────────────────────────
