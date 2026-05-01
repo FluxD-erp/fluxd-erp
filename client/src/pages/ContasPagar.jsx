@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Plus, Search, CheckCircle, Repeat, Layers, Pencil, Trash2 } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Plus, Search, CheckCircle, Repeat, Layers, Pencil, Trash2, FileInput, Upload, AlertCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, fmt, fmtData } from '../services/api';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
+import { parseNFe } from '../lib/nfeParser';
 
 const STATUS_OPTIONS = ['', 'ABERTA', 'PAGA', 'VENCIDA', 'PARCIAL', 'CANCELADA'];
 const FREQUENCIAS = ['SEMANAL','QUINZENAL','MENSAL','BIMESTRAL','TRIMESTRAL','SEMESTRAL','ANUAL'];
@@ -224,6 +225,174 @@ function ModalPagar({ conta, onClose, onSave }) {
   );
 }
 
+// ── Modal Importar NF via XML ────────────────────────────────────
+function ModalImportarNF({ open, onClose, fornecedores, planoContas, onSave }) {
+  const inputRef                  = useRef();
+  const [nfData, setNfData]       = useState(null);   // resultado do parseNFe
+  const [fornId, setFornId]       = useState('');     // fornecedor selecionado
+  const [contaId, setContaId]     = useState('');     // conta contábil
+  const [loading, setLoading]     = useState(false);
+  const [erro, setErro]           = useState('');
+
+  const reset = () => { setNfData(null); setFornId(''); setContaId(''); setErro(''); };
+  const handleClose = () => { reset(); onClose(); };
+
+  const handleFile = (file) => {
+    if (!file) return;
+    if (!file.name.match(/\.xml$/i)) return setErro('Arquivo deve ser .xml');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = parseNFe(e.target.result);
+      if (result.erro) { setErro(result.erro); return; }
+      setErro('');
+      setNfData(result);
+      // Tenta match automático por CNPJ
+      const match = fornecedores.find(f =>
+        f.cpf_cnpj?.replace(/\D/g, '') === result.emitente.cnpj
+      );
+      if (match) setFornId(match.id);
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const handleImportar = async () => {
+    if (!nfData) return;
+    setLoading(true);
+    try {
+      const payload = {
+        fornecedor_id  : fornId || null,
+        fornecedor_novo: !fornId ? { nome: nfData.emitente.razao_social, cnpj: nfData.emitente.cnpj_fmt } : null,
+        nf             : nfData.nf,
+        duplicatas     : nfData.duplicatas,
+        conta_id       : contaId || null,
+      };
+      const res = await api.financeiro.importarNF(payload);
+      toast.success(`${res.importadas} duplicata(s) importada(s) como contas a pagar!`);
+      reset();
+      onSave();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={handleClose} title="Importar NF via XML" size="lg">
+      <div className="space-y-4">
+
+        {/* Upload */}
+        {!nfData ? (
+          <>
+            <div
+              className="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center cursor-pointer hover:border-unicri-orange/40 transition-colors"
+              onClick={() => inputRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+            >
+              <Upload size={28} className="mx-auto text-gray-300 mb-3" />
+              <p className="text-gray-500 text-sm">
+                Arraste o XML da NFe ou{' '}
+                <span className="text-unicri-orange font-medium">clique para selecionar</span>
+              </p>
+              <p className="text-xs text-gray-400 mt-1">Arquivo .xml exportado do SysDh ou pasta de XMLs</p>
+              <input ref={inputRef} type="file" accept=".xml" className="hidden"
+                onChange={e => handleFile(e.target.files[0])} />
+            </div>
+            {erro && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">
+                <AlertCircle size={15} className="shrink-0" /> {erro}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Resumo da NF */}
+            <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-gray-800 text-base">NF {nfData.nf.numero}/{nfData.nf.serie}</span>
+                <button onClick={reset} className="text-gray-400 hover:text-gray-600">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-gray-600">
+                <div><span className="text-gray-400">Emitente:</span> {nfData.emitente.razao_social}</div>
+                <div><span className="text-gray-400">CNPJ:</span> {nfData.emitente.cnpj_fmt}</div>
+                <div><span className="text-gray-400">Emissão:</span> {fmtData(nfData.nf.data_emissao)}</div>
+                <div><span className="text-gray-400">Valor total:</span> <strong>{fmt(nfData.nf.valor_total)}</strong></div>
+              </div>
+            </div>
+
+            {/* Duplicatas */}
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                {nfData.duplicatas.length} duplicata(s) encontrada(s)
+                {nfData.duplicatas[0]?.avista && <span className="ml-2 text-amber-600">(pagamento à vista)</span>}
+              </p>
+              <div className="border border-gray-100 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr className="text-left text-xs text-gray-400 uppercase tracking-wide">
+                      <th className="px-4 py-2">Duplicata</th>
+                      <th className="px-4 py-2">Vencimento</th>
+                      <th className="px-4 py-2 text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {nfData.duplicatas.map((d, i) => (
+                      <tr key={i}>
+                        <td className="px-4 py-2 font-medium text-gray-700">{d.numero}</td>
+                        <td className="px-4 py-2 text-gray-500">{fmtData(d.vencimento)}</td>
+                        <td className="px-4 py-2 text-right font-semibold text-red-500">{fmt(d.valor)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Fornecedor */}
+            <div>
+              <label className="label">
+                Fornecedor *
+                {!fornId && (
+                  <span className="ml-2 text-xs text-amber-600 font-normal">
+                    CNPJ não encontrado — será criado automaticamente
+                  </span>
+                )}
+              </label>
+              <select className="input" value={fornId} onChange={e => setFornId(e.target.value)}>
+                <option value="">Criar novo: {nfData.emitente.razao_social}</option>
+                {fornecedores.map(f => (
+                  <option key={f.id} value={f.id}>{f.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Conta contábil */}
+            <div>
+              <label className="label">Conta Contábil</label>
+              <select className="input" value={contaId} onChange={e => setContaId(e.target.value)}>
+                <option value="">Nenhuma</option>
+                {planoContas.filter(c => c.tipo === 'DESPESA').map(c => (
+                  <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button className="btn-secondary" onClick={handleClose}>Cancelar</button>
+              <button className="btn-primary" onClick={handleImportar} disabled={loading}>
+                {loading ? 'Importando…' : `Importar ${nfData.duplicatas.length} duplicata(s)`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function ContasPagar() {
   const [contas, setContas] = useState([]);
   const [fornecedores, setFornecedores] = useState([]);
@@ -232,6 +401,7 @@ export default function ContasPagar() {
   const [showForm, setShowForm] = useState(false);
   const [editando, setEditando] = useState(null);
   const [pagando, setPagando]   = useState(null);
+  const [showImportNF, setShowImportNF] = useState(false);
   const [filtros, setFiltros] = useState({ status: '', search: '' });
 
   const carregar = async () => {
@@ -259,9 +429,14 @@ export default function ContasPagar() {
         title="Contas a Pagar"
         subtitle="Gerencie seus compromissos financeiros"
         actions={
-          <button className="btn-primary" onClick={() => setShowForm(true)}>
-            <Plus size={16} /> Nova Conta
-          </button>
+          <div className="flex gap-2">
+            <button className="btn-secondary" onClick={() => setShowImportNF(true)}>
+              <FileInput size={16} /> Importar NF
+            </button>
+            <button className="btn-primary" onClick={() => setShowForm(true)}>
+              <Plus size={16} /> Nova Conta
+            </button>
+          </div>
         }
       />
 
@@ -384,6 +559,14 @@ export default function ContasPagar() {
       </Modal>
 
       <ModalPagar conta={pagando} onClose={() => setPagando(null)} onSave={() => { setPagando(null); carregar(); }} />
+
+      <ModalImportarNF
+        open={showImportNF}
+        onClose={() => setShowImportNF(false)}
+        fornecedores={fornecedores}
+        planoContas={planoContas}
+        onSave={() => { setShowImportNF(false); carregar(); }}
+      />
     </div>
   );
 }

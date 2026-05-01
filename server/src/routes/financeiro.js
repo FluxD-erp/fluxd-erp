@@ -748,4 +748,70 @@ router.post('/importar', async (req, res) => {
   }
 });
 
+// ----------------------------------------------------------------
+// POST /financeiro/importar-nf
+// Recebe duplicatas extraídas do XML NFe e cria contas a pagar.
+// Body: {
+//   fornecedor_id: uuid | null,   // se null, cria fornecedor automaticamente
+//   fornecedor_novo: { nome, cnpj } | null,
+//   nf: { numero, serie, data_emissao, chave, valor_total },
+//   duplicatas: [{ numero, vencimento, valor }],
+//   conta_id: uuid | null,
+// }
+// ----------------------------------------------------------------
+router.post('/importar-nf', async (req, res) => {
+  try {
+    const { fornecedor_id, fornecedor_novo, nf, duplicatas, conta_id } = req.body;
+
+    if (!nf?.numero)              return res.status(400).json({ error: 'Dados da NF ausentes.' });
+    if (!Array.isArray(duplicatas) || duplicatas.length === 0)
+      return res.status(400).json({ error: 'Nenhuma duplicata informada.' });
+
+    let fornId = fornecedor_id;
+
+    // Cria fornecedor automaticamente se não existir
+    if (!fornId && fornecedor_novo?.nome) {
+      const { data: forn, error: eForn } = await db.from('fornecedores').insert({
+        nome        : fornecedor_novo.nome,
+        razao_social: fornecedor_novo.nome,
+        cpf_cnpj    : fornecedor_novo.cnpj || null,
+        tipo        : 'PJ',
+        empresa_id  : req.empresaId,
+        ativo       : true,
+      }).select().single();
+      if (eForn) throw new Error(`Erro ao criar fornecedor: ${eForn.message}`);
+      fornId = forn.id;
+    }
+
+    if (!fornId) return res.status(400).json({ error: 'Fornecedor não identificado.' });
+
+    // Monta as contas a pagar
+    const contas = duplicatas.map(dup => ({
+      fornecedor_id   : fornId,
+      descricao       : `NF ${nf.numero}${nf.serie ? '/' + nf.serie : ''} — Dup. ${dup.numero}`,
+      valor_original  : parseFloat(dup.valor),
+      valor_pago      : 0,
+      data_emissao    : nf.data_emissao,
+      data_vencimento : dup.vencimento,
+      numero_documento: `NF-${nf.numero}`,
+      observacao      : nf.chave ? `Chave NFe: ${nf.chave}` : null,
+      conta_id        : conta_id || null,
+      status          : 'ABERTA',
+      empresa_id      : req.empresaId,
+    }));
+
+    const { data, error } = await db.from('contas_pagar').insert(contas).select();
+    if (error) throw error;
+
+    res.status(201).json({
+      success    : true,
+      importadas : data.length,
+      fornecedor_id: fornId,
+      contas     : data,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

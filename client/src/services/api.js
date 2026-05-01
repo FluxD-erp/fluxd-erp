@@ -105,6 +105,7 @@ export const api = {
     atualizarContaReceber: (id, data)    => req(`/financeiro/contas-receber/${id}`, { method: 'PUT', body: data }),
 
     importar        : (rows)        => req('/financeiro/importar', { method: 'POST', body: { rows } }),
+    importarNF      : (data)        => req('/financeiro/importar-nf', { method: 'POST', body: data }),
     conciliar       : (id, data)    => req(`/financeiro/lancamentos/${id}/conciliar`, { method: 'PATCH', body: data }),
     conciliarBulk   : (pares)       => req('/financeiro/lancamentos/conciliar-bulk', { method: 'PATCH', body: { pares } }),
 
