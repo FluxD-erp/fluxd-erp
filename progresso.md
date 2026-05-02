@@ -1,7 +1,114 @@
 # FluxD ERP — Progresso do Projeto
 
-> Última atualização: 01/05/2026  
+> Última atualização: 02/05/2026  
 > Stack: React 18 + Vite · Node.js/Express · Supabase (PostgreSQL) · Netlify (front) · Render (back)
+
+---
+
+## Estado atual: Produção ✅
+
+O sistema está **deployado e funcional** em:
+- **Frontend:** https://fluxd-erp.netlify.app
+- **Backend:** https://fluxd-erp.onrender.com
+
+---
+
+## Histórico de entregas (por commit)
+
+| # | Commit | Entrega |
+|---|--------|---------|
+| 1 | `8476964` | Commit inicial — ERP financeiro completo (CRUD, dashboard, relatórios) |
+| 2 | `38b6342` | Migração SQLite → Supabase PostgreSQL |
+| 3 | `171eb01` | Fix `_redirects` para SPA routing no Netlify |
+| 4 | `e9a6c5b` | CORS multi-origem via `APP_URL` separado por vírgula |
+| 5 | `66f5213` | Reenviar convite para usuários pendentes (Gestão de Acessos) |
+| 6 | `29ee263` | Multi-tenant: múltiplas empresas por usuário |
+| 7 | `a5fd997` | Página de Configurações SaaS unificada + nav refatorado |
+| 8 | `849b5a9` | Notification bell (boletos do dia) + user menu dropdown |
+| 9 | `8c688a1` | Recorrências, parcelamentos, importação CSV, onboarding guiado, Stripe, dashboard melhorado |
+| 10 | `3e01113` | Conciliação bancária via OFX (parser + auto-match + match manual) |
+| 11 | `23a082a` | Edição e cancelamento de lançamentos |
+| 12 | `fc97db2` | Edição e cancelamento de contas a pagar/receber |
+| 13 | `3bb341a` | Fix: POST /lancamentos persiste campos OFX |
+| 14 | `8212582` | Exportação de DRE em PDF profissional |
+| 15 | `caabb54` | **Fix crítico:** X-Empresa-ID enviava objeto JSON em vez do UUID puro |
+| 16 | `99dcb11` | Refresh token, rate limiting, RLS migration, dashboard por período, filtros avançados |
+| 17 | `44591a0` | DRE analítico: endpoint + páginas detalhadas por categoria no PDF + seed demo |
+| 18 | `7f50cdb` | Importação de NF via XML — duplicatas viram contas a pagar automaticamente |
+
+---
+
+## Módulos implementados
+
+| Módulo | Rota | Status |
+|--------|------|--------|
+| Dashboard | `/` | ✅ KPIs reais, seletor mês/ano, tendências, saldo em caixa, meta mensal, onboarding |
+| Lançamentos | `/lancamentos` | ✅ CRUD completo + importação CSV + filtros por conta/cliente/fornecedor |
+| Contas a Pagar | `/contas-pagar` | ✅ Simples/Parcelado/Recorrente + **Importação NF via XML** |
+| Contas a Receber | `/contas-receber` | ✅ Simples/Parcelado/Recorrente + edição/cancelamento |
+| Fluxo de Caixa | `/fluxo-caixa` | ✅ Saldo acumulado diário |
+| Programação da Semana | `/programacao-semana` | ✅ Grade semanal + export .ics |
+| Passivos Especiais | `/passivos` | ✅ Dívida Ativa, PERT, capital informal |
+| Clientes | `/clientes` | ✅ CRUD + lookup CNPJ via BrasilAPI |
+| Fornecedores | `/fornecedores` | ✅ CRUD + lookup CNPJ via BrasilAPI |
+| Plano de Contas | `/plano-contas` | ✅ 57 contas, estrutura CPC 26 |
+| Relatórios / DRE | `/relatorios` | ✅ DRE + PDF profissional + páginas analíticas por categoria |
+| Conciliação Bancária | `/conciliacao` | ✅ OFX parser + auto-match + match manual |
+| Planos / Billing | `/planos` | ⚠️ Stripe configurado (chaves no Render), página de planos precisa revisão |
+| Configurações | `/configuracoes` | ✅ Empresa, usuários (RBAC), logs de auditoria |
+| Onboarding | (componente) | ✅ Checklist de 5 etapas |
+
+---
+
+## Stripe — Estado atual
+
+- ✅ Chaves configuradas no Render (`STRIPE_SECRET_KEY`, `STRIPE_PRICE_PRO`, `STRIPE_WEBHOOK_SECRET`)
+- ✅ Produto "FluxD Pro" criado no Stripe (price_1TSc661WxeziN2F5XUbiEWgx)
+- ✅ Webhook configurado para `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
+- ⚠️ Página `/planos` precisa ser atualizada com nova precificação (FREE / Essencial R$47 / Pro R$97 / Multi R$197)
+- ⚠️ Botão "Assinar" não está redirecionando — investigar na próxima sessão
+
+---
+
+## Landing Page — Estado atual
+
+- ✅ Estrutura do projeto criada em `/landing` (Vite + React + Tailwind)
+- ✅ Dependências instaladas
+- ⚠️ Componente App.jsx ainda não implementado — pendente para próxima sessão
+- ⚠️ Aguardando registro do domínio `fluxd.com.br`
+
+---
+
+## Precificação definida
+
+| Plano | Preço | Empresas | Para quem |
+|-------|-------|----------|-----------|
+| Free | R$ 0 | 1 | Testar |
+| Essencial | R$ 47/mês | 1 | Autônomo, MEI |
+| Pro | R$ 97/mês | 3 | PME, varejo |
+| Multi | R$ 197/mês | Ilimitado | Grupos, contadores |
+
+---
+
+## Próximos passos (próxima sessão)
+
+### Prioritários
+- [ ] **Corrigir página de Planos** — atualizar com 4 planos (Free/Essencial/Pro/Multi) e corrigir botão de checkout
+- [ ] **Debugar botão Assinar** — verificar por que não redireciona para o Stripe
+- [ ] **Implementar landing page** — App.jsx com hero, features, preços, CTA, depoimentos
+- [ ] **Aplicar migration RLS** — executar `08_rls.sql` no SQL Editor do Supabase
+
+### Produto
+- [ ] **Logo no PDF** — cabeçalho do DRE com logo da empresa + FluxD
+- [ ] **Relatório de Fluxo de Caixa em PDF**
+- [ ] **Notificações por e-mail** — boletos vencendo
+- [ ] **Importação CSV de clientes/fornecedores**
+- [ ] **Paginação em Lançamentos** — hoje limitado a 200 registros
+
+### Técnico
+- [ ] **Upgrade Render** — plano gratuito hiberna; avaliar plano pago
+- [ ] **Testes automatizados** — endpoints críticos
+
 
 ---
 
