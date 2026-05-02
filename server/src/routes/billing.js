@@ -10,10 +10,20 @@ if (process.env.STRIPE_SECRET_KEY) {
 }
 
 const PLANOS = {
+  essencial: {
+    priceId : process.env.STRIPE_PRICE_ESSENCIAL || 'price_placeholder_essencial',
+    nome    : 'FluxD Essencial',
+    valor   : 4700,
+  },
   pro: {
     priceId : process.env.STRIPE_PRICE_PRO || 'price_placeholder_pro',
     nome    : 'FluxD Pro',
-    valor   : 9700, // centavos
+    valor   : 9700,
+  },
+  multi: {
+    priceId : process.env.STRIPE_PRICE_MULTI || 'price_placeholder_multi',
+    nome    : 'FluxD Multi',
+    valor   : 19700,
   },
 };
 
@@ -112,8 +122,11 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
   switch (event.type) {
     case 'checkout.session.completed': {
       const plano = event.data.object.metadata?.plano || 'pro';
+      const planoValido = ['essencial', 'pro', 'multi'].includes(plano.toLowerCase())
+        ? plano.toUpperCase()
+        : 'PRO';
       if (empresaId) {
-        await db.from('empresas').update({ plano: plano.toUpperCase() }).eq('id', empresaId);
+        await db.from('empresas').update({ plano: planoValido }).eq('id', empresaId);
       }
       break;
     }
