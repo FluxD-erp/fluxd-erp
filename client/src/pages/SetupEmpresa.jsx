@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, TrendingUp } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -7,12 +7,20 @@ import { useAuth } from '../context/AuthContext';
 
 export default function SetupEmpresa() {
   const navigate = useNavigate();
-  const { setEmpresaAtiva, fetchEmpresas } = useAuth();
+  const { setEmpresaAtiva, fetchEmpresas, empresas, loadingEmpresas } = useAuth();
 
   const [form, setForm] = useState({ nome: '', cnpj: '' });
   const [busy, setBusy] = useState(false);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Se já tem empresa vinculada, redireciona direto
+  useEffect(() => {
+    if (!loadingEmpresas && empresas.length > 0) {
+      setEmpresaAtiva(empresas[0]);
+      navigate('/');
+    }
+  }, [empresas, loadingEmpresas, navigate, setEmpresaAtiva]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -28,7 +36,12 @@ export default function SetupEmpresa() {
       toast.success(`Empresa "${empresa.nome}" criada com sucesso!`);
       navigate('/');
     } catch (e) {
-      toast.error(e.message);
+      const msg = e.message || '';
+      if (msg.includes('cnpj')) {
+        toast.error('Este CNPJ já está cadastrado. Tente sem CNPJ ou use outro.');
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -65,7 +78,7 @@ export default function SetupEmpresa() {
                 className="input"
                 value={form.nome}
                 onChange={e => set('nome', e.target.value)}
-                placeholder="Ex: Universidade da Criança"
+                placeholder="Ex: Minha Empresa Ltda"
                 required
                 autoFocus
               />
