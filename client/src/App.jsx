@@ -45,7 +45,7 @@ function EmpresaGuard({ children }) {
   if (loadingEmpresas) return null;
 
   // Se não tem empresa ativa e já carregou a lista
-  if (!empresaAtiva && empresas.length === 0) {
+  if (!empresaAtiva && !loadingEmpresas && empresas.length === 0) {
     return <Navigate to="/setup" replace />;
   }
 
