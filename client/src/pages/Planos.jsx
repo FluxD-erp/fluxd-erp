@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Check, Shield, Star, ExternalLink, AlertCircle, Users, Building2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -50,12 +50,17 @@ const PLANOS = [
 const PLANO_KEY = { PRO: 'pro' };
 
 export default function Planos() {
-  const { empresaAtiva } = useAuth();
+  const { empresaAtiva, fetchEmpresas } = useAuth();
   const [loadingPlano, setLoadingPlano] = useState(null);
   const [searchParams]                  = useSearchParams();
 
   const planoAtual = (empresaAtiva?.plano || 'FREE').toUpperCase();
   const checkout   = searchParams.get('checkout');
+
+  // Ao voltar do Stripe, recarrega empresas para refletir plano atualizado
+  useEffect(() => {
+    if (checkout === 'success') fetchEmpresas();
+  }, [checkout, fetchEmpresas]);
 
   const handleAssinar = async (planoId) => {
     if (!empresaAtiva?.id) return toast.error('Nenhuma empresa selecionada');

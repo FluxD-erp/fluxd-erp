@@ -58,10 +58,11 @@ export function AuthProvider({ children }) {
       // Valida/auto-seleciona empresa ativa
       _setEmpresaAtiva(prev => {
         if (prev) {
-          // Confirma que ainda existe na lista
-          const ainda = (data || []).find(e => e.id === prev.id);
-          if (!ainda) { localStorage.removeItem('empresaAtiva'); return null; }
-          return prev;
+          // Atualiza com dados frescos do servidor (ex: plano alterado pelo webhook)
+          const atualizada = (data || []).find(e => e.id === prev.id);
+          if (!atualizada) { localStorage.removeItem('empresaAtiva'); return null; }
+          localStorage.setItem('empresaAtiva', JSON.stringify(atualizada));
+          return atualizada;
         }
         // Sem empresa ativa: auto-seleciona a primeira disponível
         if (data && data.length > 0) {
