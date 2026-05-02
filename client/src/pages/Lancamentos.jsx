@@ -169,7 +169,8 @@ function ModalImportar({ open, onClose, onSave }) {
 
   const linhasOk    = rows.filter(r => r._ok).length;
   const linhasErro  = rows.filter(r => !r._ok).length;
-  const novosCount  = rows.filter(r => r._ok && r._matchTipo === 'novo').length;
+  const novosNomesUnicos = [...new Set(rows.filter(r => r._ok && r._matchTipo === 'novo').map(r => r.descricao))];
+  const novosCount  = novosNomesUnicos.length;
   const matchCount  = rows.filter(r => r._ok && (r._matchTipo === 'match' || r._matchTipo === 'parcial')).length;
 
   return (
