@@ -64,7 +64,7 @@ router.get('/', async (req, res) => {
       .from('profiles')
       .select('perfil')
       .eq('id', req.user.id)
-      .single();
+      .maybeSingle();  // maybeSingle não lança erro se não encontrar
 
     let empresas = (data || [])
       .filter(ue => ue.empresas)
@@ -93,6 +93,15 @@ router.post('/', async (req, res) => {
   try {
     const { nome, cnpj, logo_url } = req.body;
     if (!nome) return res.status(400).json({ error: 'Nome é obrigatório.' });
+
+    // Garante que o profile existe (pode não ter sido criado pelo trigger no OAuth)
+    await supabaseAdmin.from('profiles').upsert({
+      id    : req.user.id,
+      nome  : req.user.user_metadata?.full_name || req.user.email?.split('@')[0] || 'Usuário',
+      email : req.user.email,
+      perfil: 'VISUALIZACAO',
+      ativo : true,
+    }, { onConflict: 'id', ignoreDuplicates: true });
 
     // Cria a empresa
     const { data: emp, error: empErr } = await supabaseAdmin
