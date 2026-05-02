@@ -126,6 +126,19 @@ export function AuthProvider({ children }) {
     return supabase.auth.signInWithPassword({ email, password });
   }
 
+  async function signUp(email, password) {
+    return supabase.auth.signUp({ email, password });
+  }
+
+  async function signInWithGoogle() {
+    return supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/`,
+      },
+    });
+  }
+
   async function signOut() {
     setProfile(null);
     setEmpresas([]);
@@ -139,7 +152,7 @@ export function AuthProvider({ children }) {
       isAdmin, isFinanceiro, isActive, canWrite, canRead,
       empresas, empresaAtiva, setEmpresaAtiva,
       loadingEmpresas, fetchEmpresas,
-      signIn, signOut,
+      signIn, signUp, signInWithGoogle, signOut,
     }}>
       {children}
     </AuthContext.Provider>
