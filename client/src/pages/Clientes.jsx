@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, Building2, User, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Search, Building2, User, CheckCircle2, XCircle, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../services/api';
 import PageHeader from '../components/PageHeader';
@@ -216,6 +216,7 @@ export default function Clientes() {
   const [showForm, setShowForm] = useState(false);
   const [editando, setEditando] = useState(null);
   const [search, setSearch] = useState('');
+  const [selecionados, setSelecionados] = useState(new Set());
 
   const carregar = async () => {
     setLoading(true);
@@ -224,6 +225,7 @@ export default function Clientes() {
     const data = await api.clientes.listar(params);
     setClientes(data);
     setLoading(false);
+    setSelecionados(new Set());
   };
 
   useEffect(() => {
@@ -237,6 +239,35 @@ export default function Clientes() {
     toast.success('Cliente desativado');
     carregar();
   };
+
+  const toggleSelecionado = (id) => {
+    setSelecionados(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleTodos = () => {
+    const ativos = clientes.filter(c => c.ativo).map(c => c.id);
+    if (selecionados.size === ativos.length) {
+      setSelecionados(new Set());
+    } else {
+      setSelecionados(new Set(ativos));
+    }
+  };
+
+  const desativarLote = async () => {
+    if (!confirm(`Desativar ${selecionados.size} cliente(s)?`)) return;
+    try {
+      await Promise.all([...selecionados].map(id => api.clientes.excluir(id)));
+      toast.success(`${selecionados.size} cliente(s) desativado(s)`);
+      carregar();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const ativos = clientes.filter(c => c.ativo);
+  const todosSelecionados = ativos.length > 0 && selecionados.size === ativos.length;
 
   return (
     <div>
@@ -258,10 +289,30 @@ export default function Clientes() {
         </div>
       </div>
 
+      {selecionados.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-unicri-navy text-white rounded-xl text-sm">
+          <span className="font-medium">{selecionados.size} selecionado(s)</span>
+          <div className="flex-1" />
+          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 rounded-lg text-xs font-medium transition-colors"
+            onClick={desativarLote}>
+            <Trash2 size={13} /> Desativar selecionados
+          </button>
+          <button className="text-xs text-white/60 hover:text-white transition-colors"
+            onClick={() => setSelecionados(new Set())}>
+            Limpar seleção
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
+              <th className="px-4 py-3 w-8">
+                <input type="checkbox" className="rounded border-gray-300 text-unicri-orange focus:ring-unicri-orange"
+                  checked={todosSelecionados} onChange={toggleTodos}
+                  disabled={ativos.length === 0} />
+              </th>
               <th className="px-5 py-3">Nome</th>
               <th className="px-5 py-3">Tipo</th>
               <th className="px-5 py-3">CPF/CNPJ</th>
@@ -273,11 +324,17 @@ export default function Clientes() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {loading ? (
-              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Carregando...</td></tr>
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-gray-400">Carregando...</td></tr>
             ) : clientes.length === 0 ? (
-              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Nenhum cliente encontrado</td></tr>
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-gray-400">Nenhum cliente encontrado</td></tr>
             ) : clientes.map(c => (
-              <tr key={c.id} className={`hover:bg-gray-50/50 transition-colors ${!c.ativo ? 'opacity-50' : ''}`}>
+              <tr key={c.id} className={`hover:bg-gray-50/50 transition-colors ${!c.ativo ? 'opacity-50' : ''} ${selecionados.has(c.id) ? 'bg-blue-50/40' : ''}`}>
+                <td className="px-4 py-3">
+                  {c.ativo && (
+                    <input type="checkbox" className="rounded border-gray-300 text-unicri-orange focus:ring-unicri-orange"
+                      checked={selecionados.has(c.id)} onChange={() => toggleSelecionado(c.id)} />
+                  )}
+                </td>
                 <td className="px-5 py-3">
                   <div className="font-medium text-gray-800">{c.nome}</div>
                   {c.razao_social && c.razao_social !== c.nome && (

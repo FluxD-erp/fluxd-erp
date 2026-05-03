@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, Building2, User, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Search, Building2, User, CheckCircle2, XCircle, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../services/api';
 import PageHeader from '../components/PageHeader';
@@ -203,6 +203,7 @@ export default function Fornecedores() {
   const [showForm, setShowForm] = useState(false);
   const [editando, setEditando] = useState(null);
   const [search, setSearch] = useState('');
+  const [selecionados, setSelecionados] = useState(new Set());
 
   const carregar = async () => {
     setLoading(true);
@@ -211,6 +212,7 @@ export default function Fornecedores() {
     const data = await api.fornecedores.listar(params);
     setLista(data);
     setLoading(false);
+    setSelecionados(new Set());
   };
 
   useEffect(() => {
@@ -224,6 +226,35 @@ export default function Fornecedores() {
     toast.success('Fornecedor desativado');
     carregar();
   };
+
+  const toggleSelecionado = (id) => {
+    setSelecionados(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleTodos = () => {
+    const ativos = lista.filter(f => f.ativo).map(f => f.id);
+    if (selecionados.size === ativos.length) {
+      setSelecionados(new Set());
+    } else {
+      setSelecionados(new Set(ativos));
+    }
+  };
+
+  const desativarLote = async () => {
+    if (!confirm(`Desativar ${selecionados.size} fornecedor(es)?`)) return;
+    try {
+      await Promise.all([...selecionados].map(id => api.fornecedores.excluir(id)));
+      toast.success(`${selecionados.size} fornecedor(es) desativado(s)`);
+      carregar();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const ativos = lista.filter(f => f.ativo);
+  const todosSelecionados = ativos.length > 0 && selecionados.size === ativos.length;
 
   return (
     <div>
@@ -245,10 +276,30 @@ export default function Fornecedores() {
         </div>
       </div>
 
+      {selecionados.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 mb-3 bg-unicri-navy text-white rounded-xl text-sm">
+          <span className="font-medium">{selecionados.size} selecionado(s)</span>
+          <div className="flex-1" />
+          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 rounded-lg text-xs font-medium transition-colors"
+            onClick={desativarLote}>
+            <Trash2 size={13} /> Desativar selecionados
+          </button>
+          <button className="text-xs text-white/60 hover:text-white transition-colors"
+            onClick={() => setSelecionados(new Set())}>
+            Limpar seleção
+          </button>
+        </div>
+      )}
+
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
+              <th className="px-4 py-3 w-8">
+                <input type="checkbox" className="rounded border-gray-300 text-unicri-orange focus:ring-unicri-orange"
+                  checked={todosSelecionados} onChange={toggleTodos}
+                  disabled={ativos.length === 0} />
+              </th>
               <th className="px-5 py-3">Nome</th>
               <th className="px-5 py-3">CNPJ/CPF</th>
               <th className="px-5 py-3">Categoria</th>
@@ -260,11 +311,17 @@ export default function Fornecedores() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {loading ? (
-              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Carregando...</td></tr>
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-gray-400">Carregando...</td></tr>
             ) : lista.length === 0 ? (
-              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Nenhum fornecedor encontrado</td></tr>
+              <tr><td colSpan={8} className="px-5 py-10 text-center text-gray-400">Nenhum fornecedor encontrado</td></tr>
             ) : lista.map(f => (
-              <tr key={f.id} className={`hover:bg-gray-50/50 transition-colors ${!f.ativo ? 'opacity-50' : ''}`}>
+              <tr key={f.id} className={`hover:bg-gray-50/50 transition-colors ${!f.ativo ? 'opacity-50' : ''} ${selecionados.has(f.id) ? 'bg-blue-50/40' : ''}`}>
+                <td className="px-4 py-3">
+                  {f.ativo && (
+                    <input type="checkbox" className="rounded border-gray-300 text-unicri-orange focus:ring-unicri-orange"
+                      checked={selecionados.has(f.id)} onChange={() => toggleSelecionado(f.id)} />
+                  )}
+                </td>
                 <td className="px-5 py-3">
                   <div className="font-medium text-gray-800">{f.nome}</div>
                   {f.razao_social && f.razao_social !== f.nome && (
