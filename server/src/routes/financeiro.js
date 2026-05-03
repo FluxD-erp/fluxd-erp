@@ -817,22 +817,51 @@ router.post('/importar-nf', async (req, res) => {
 // ----------------------------------------------------------------
 // POST /api/financeiro/importar-contas-pagar
 // Importa CSV como contas a pagar, criando fornecedores novos
-// Body: { linhas: [{ descricao, valor, data_vencimento, status, observacao, fornecedor_nome }] }
+// Body: { linhas: [{ descricao, cnpj?, valor, data_vencimento, status, observacao, fornecedor_nome }] }
 // ----------------------------------------------------------------
+
+/** Consulta BrasilAPI e retorna campos do fornecedor ou null */
+async function buscarCNPJ(cnpj) {
+  try {
+    const c = cnpj.replace(/\D/g, '');
+    if (c.length !== 14) return null;
+    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${c}`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    return {
+      nome            : d.nome_fantasia || d.razao_social,
+      razao_social    : d.razao_social,
+      cpf_cnpj        : d.cnpj,
+      tipo            : 'JURIDICA',
+      email           : d.email || null,
+      telefone        : d.ddd_telefone_1 || null,
+      endereco        : d.logradouro || null,
+      numero          : d.numero || null,
+      complemento     : d.complemento || null,
+      bairro          : d.bairro || null,
+      cidade          : d.municipio || null,
+      uf              : d.uf || null,
+      cep             : d.cep || null,
+      situacao_cadastral : d.descricao_situacao_cadastral || null,
+      atividade_principal: d.cnae_fiscal_descricao || null,
+    };
+  } catch { return null; }
+}
+
 router.post('/importar-contas-pagar', async (req, res) => {
   try {
     const { linhas } = req.body;
     if (!Array.isArray(linhas) || linhas.length === 0)
       return res.status(400).json({ error: 'Nenhuma linha enviada.' });
 
-    // 1. Cria fornecedores novos (deduplicado por nome)
+    // 1. Cria/atualiza fornecedores novos (deduplicado por nome)
     const nomesNovos = [...new Set(
       linhas.filter(l => l.fornecedor_novo && l.fornecedor_nome).map(l => l.fornecedor_nome)
     )];
 
     const fornecedorMap = {}; // nome → id
     for (const nome of nomesNovos) {
-      // Verifica se já existe (race condition)
+      // Verifica se já existe pelo nome
       const { data: existe } = await db.from('fornecedores')
         .select('id')
         .eq('empresa_id', req.empresaId)
@@ -842,8 +871,16 @@ router.post('/importar-contas-pagar', async (req, res) => {
       if (existe) {
         fornecedorMap[nome] = existe.id;
       } else {
+        // Tenta buscar CNPJ da linha correspondente
+        const linhaCNPJ = linhas.find(l => l.fornecedor_nome === nome && l.cnpj);
+        const dadosRFB  = linhaCNPJ?.cnpj ? await buscarCNPJ(linhaCNPJ.cnpj) : null;
+
+        const payload = dadosRFB
+          ? { ...dadosRFB, empresa_id: req.empresaId, ativo: true }
+          : { nome, tipo: 'JURIDICA', empresa_id: req.empresaId, ativo: true };
+
         const { data: novo, error } = await db.from('fornecedores')
-          .insert({ nome, tipo: 'JURIDICA', empresa_id: req.empresaId, ativo: true })
+          .insert(payload)
           .select('id')
           .single();
         if (error) throw error;
@@ -856,7 +893,7 @@ router.post('/importar-contas-pagar', async (req, res) => {
     for (const l of linhas) {
       let fornecedor_id = l.fornecedor_id || fornecedorMap[l.fornecedor_nome] || null;
 
-      // Se ainda null, tenta buscar pelo nome da descrição como fallback
+      // Fallback: busca pelo nome da descrição
       if (!fornecedor_id) {
         const { data: fb } = await db.from('fornecedores')
           .select('id')
@@ -866,10 +903,15 @@ router.post('/importar-contas-pagar', async (req, res) => {
         if (fb) fornecedor_id = fb.id;
       }
 
-      // Último recurso: cria fornecedor com o nome da descrição
+      // Último recurso: cria fornecedor com dados da RFB ou só o nome
       if (!fornecedor_id) {
+        const dadosRFB = l.cnpj ? await buscarCNPJ(l.cnpj) : null;
+        const payload  = dadosRFB
+          ? { ...dadosRFB, empresa_id: req.empresaId, ativo: true }
+          : { nome: l.descricao, tipo: 'JURIDICA', empresa_id: req.empresaId, ativo: true };
+
         const { data: fc, error: fe } = await db.from('fornecedores')
-          .insert({ nome: l.descricao, tipo: 'JURIDICA', empresa_id: req.empresaId, ativo: true })
+          .insert(payload)
           .select('id')
           .single();
         if (fe) throw fe;
@@ -894,7 +936,7 @@ router.post('/importar-contas-pagar', async (req, res) => {
     if (error) throw error;
 
     res.status(201).json({
-      importadas     : data.length,
+      importadas          : data.length,
       fornecedores_criados: nomesNovos.length,
     });
   } catch (e) {

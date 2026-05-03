@@ -240,7 +240,7 @@ function matchFornecedor(nome, lista) {
 }
 
 function downloadTemplateCP() {
-  const csv = 'descricao,valor,data_vencimento,status,observacao\nRD DISTRIBUIDORA LTDA,683.00,2026-05-01,ABERTA,Parcela 1/4 - NF 30830';
+  const csv = 'descricao,cnpj,valor,data_vencimento,status,observacao\nRD DISTRIBUIDORA LTDA,07614747000100,683.00,2026-05-01,ABERTA,Parcela 1/4 - NF 30830';
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -285,10 +285,12 @@ function ModalImportarCSV({ open, onClose, onSave }) {
           else if (!/^\d{4}-\d{2}-\d{2}$/.test(data_v)) errosLocais.push({ linha, msg: `data "${data_v}" inválida (use AAAA-MM-DD)` });
           else if (isNaN(valor) || valor <= 0)            errosLocais.push({ linha, msg: `valor "${r.valor}" inválido` });
 
+          const cnpj = (r.cnpj || '').replace(/\D/g, '');
           const { fornecedor, tipo: matchTipo } = matchFornecedor(r.descricao?.trim() || '', fornecedores);
 
           return {
             descricao      : r.descricao?.trim() || '',
+            cnpj           : cnpj || null,
             valor,
             data_vencimento: data_v,
             status         : STATUS.includes(status) ? status : 'ABERTA',
@@ -342,7 +344,7 @@ function ModalImportarCSV({ open, onClose, onSave }) {
         <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-xl text-sm text-blue-800">
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <div>
-            Colunas obrigatórias: <strong>descricao, valor, data_vencimento</strong> (AAAA-MM-DD). Opcionais: status, observacao.
+            Colunas obrigatórias: <strong>descricao, valor, data_vencimento</strong> (AAAA-MM-DD). Opcionais: cnpj, status, observacao. Com CNPJ, o fornecedor é cadastrado automaticamente via Receita Federal.
             <button onClick={downloadTemplateCP} className="ml-2 underline font-medium flex items-center gap-1 inline-flex">
               <Download size={12} /> Baixar modelo
             </button>
@@ -401,7 +403,7 @@ function ModalImportarCSV({ open, onClose, onSave }) {
                       <td className="px-3 py-1.5">
                         {r._matchTipo === 'match'   && <span className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded text-xs">✓ {r._fornecedor?.nome}</span>}
                         {r._matchTipo === 'parcial' && <span className="inline-flex items-center gap-1 text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded text-xs">~ {r._fornecedor?.nome}</span>}
-                        {r._matchTipo === 'novo' && r._ok && <span className="inline-flex items-center gap-1 text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded text-xs">+ novo</span>}
+                        {r._matchTipo === 'novo' && r._ok && <span className="inline-flex items-center gap-1 text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded text-xs">+ novo{r.cnpj ? ` (CNPJ)` : ''}</span>}
                       </td>
                     </tr>
                   ))}
