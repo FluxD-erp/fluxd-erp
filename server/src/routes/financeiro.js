@@ -870,6 +870,17 @@ router.post('/importar-contas-pagar', async (req, res) => {
 
       if (existe) {
         fornecedorMap[nome] = existe.id;
+        // Enriquece com dados da RFB se tiver CNPJ
+        const linhaCNPJ = linhas.find(l => l.fornecedor_nome === nome && l.cnpj);
+        if (linhaCNPJ?.cnpj) {
+          const dadosRFB = await buscarCNPJ(linhaCNPJ.cnpj);
+          if (dadosRFB) {
+            await db.from('fornecedores')
+              .update(dadosRFB)
+              .eq('id', existe.id)
+              .eq('empresa_id', req.empresaId);
+          }
+        }
       } else {
         // Tenta buscar CNPJ da linha correspondente
         const linhaCNPJ = linhas.find(l => l.fornecedor_nome === nome && l.cnpj);
@@ -901,6 +912,17 @@ router.post('/importar-contas-pagar', async (req, res) => {
           .ilike('nome', l.descricao)
           .maybeSingle();
         if (fb) fornecedor_id = fb.id;
+      }
+
+      // Se tem CNPJ e fornecedor já existe, enriquece com dados da RFB
+      if (fornecedor_id && l.cnpj) {
+        const dadosRFB = await buscarCNPJ(l.cnpj);
+        if (dadosRFB) {
+          await db.from('fornecedores')
+            .update(dadosRFB)
+            .eq('id', fornecedor_id)
+            .eq('empresa_id', req.empresaId);
+        }
       }
 
       // Último recurso: cria fornecedor com dados da RFB ou só o nome
