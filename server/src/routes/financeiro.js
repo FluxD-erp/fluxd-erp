@@ -814,4 +814,70 @@ router.post('/importar-nf', async (req, res) => {
   }
 });
 
+// ----------------------------------------------------------------
+// POST /api/financeiro/importar-contas-pagar
+// Importa CSV como contas a pagar, criando fornecedores novos
+// Body: { linhas: [{ descricao, valor, data_vencimento, status, observacao, fornecedor_nome }] }
+// ----------------------------------------------------------------
+router.post('/importar-contas-pagar', async (req, res) => {
+  try {
+    const { linhas } = req.body;
+    if (!Array.isArray(linhas) || linhas.length === 0)
+      return res.status(400).json({ error: 'Nenhuma linha enviada.' });
+
+    // 1. Cria fornecedores novos (deduplicado por nome)
+    const nomesNovos = [...new Set(
+      linhas.filter(l => l.fornecedor_novo && l.fornecedor_nome).map(l => l.fornecedor_nome)
+    )];
+
+    const fornecedorMap = {}; // nome → id
+    for (const nome of nomesNovos) {
+      // Verifica se já existe (race condition)
+      const { data: existe } = await db.from('fornecedores')
+        .select('id')
+        .eq('empresa_id', req.empresaId)
+        .ilike('nome', nome)
+        .maybeSingle();
+
+      if (existe) {
+        fornecedorMap[nome] = existe.id;
+      } else {
+        const { data: novo, error } = await db.from('fornecedores')
+          .insert({ nome, empresa_id: req.empresaId, ativo: true })
+          .select('id')
+          .single();
+        if (error) throw error;
+        fornecedorMap[nome] = novo.id;
+      }
+    }
+
+    // 2. Monta contas a pagar
+    const contas = linhas.map(l => {
+      const fornecedor_id = l.fornecedor_id || fornecedorMap[l.fornecedor_nome] || null;
+      return {
+        fornecedor_id,
+        descricao      : l.descricao,
+        valor_original : parseFloat(l.valor),
+        valor_pago     : 0,
+        data_emissao   : l.data_vencimento, // usa vencimento como emissão se não tiver
+        data_vencimento: l.data_vencimento,
+        numero_documento: l.numero_documento || null,
+        observacao     : l.observacao || null,
+        status         : 'ABERTA',
+        empresa_id     : req.empresaId,
+      };
+    });
+
+    const { data, error } = await db.from('contas_pagar').insert(contas).select();
+    if (error) throw error;
+
+    res.status(201).json({
+      importadas     : data.length,
+      fornecedores_criados: nomesNovos.length,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

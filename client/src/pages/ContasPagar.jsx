@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import { Plus, Search, CheckCircle, Repeat, Layers, Pencil, Trash2, FileInput, Upload, AlertCircle, X } from 'lucide-react';
+import { Plus, Search, CheckCircle, Repeat, Layers, Pencil, Trash2, FileInput, Upload, AlertCircle, X, CheckCircle2, Download } from 'lucide-react';
+import Papa from 'papaparse';
 import toast from 'react-hot-toast';
 import { api, fmt, fmtData } from '../services/api';
 import PageHeader from '../components/PageHeader';
@@ -225,6 +226,204 @@ function ModalPagar({ conta, onClose, onSave }) {
   );
 }
 
+// ── Helpers de match ────────────────────────────────────────────
+function normalizar(s) {
+  return (s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+function matchFornecedor(nome, lista) {
+  const n = normalizar(nome);
+  const exato = lista.find(f => normalizar(f.nome) === n);
+  if (exato) return { fornecedor: exato, tipo: 'match' };
+  const parcial = lista.find(f => normalizar(f.nome).includes(n) || n.includes(normalizar(f.nome)));
+  if (parcial) return { fornecedor: parcial, tipo: 'parcial' };
+  return { fornecedor: null, tipo: 'novo' };
+}
+
+function downloadTemplateCP() {
+  const csv = 'descricao,valor,data_vencimento,status,observacao\nRD DISTRIBUIDORA LTDA,683.00,2026-05-01,ABERTA,Parcela 1/4 - NF 30830';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'modelo_contas_pagar.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Modal Importar CSV → Contas a Pagar ─────────────────────────
+function ModalImportarCSV({ open, onClose, onSave }) {
+  const [rows, setRows]       = useState([]);
+  const [erros, setErros]     = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [fornecedores, setFornecedores] = useState([]);
+  const inputRef = useRef();
+
+  const reset = () => { setRows([]); setErros([]); };
+
+  useEffect(() => {
+    if (!open) return;
+    api.fornecedores.listar({ limit: 500 }).then(f => setFornecedores(f || [])).catch(() => {});
+  }, [open]);
+
+  const handleFile = (file) => {
+    if (!file) return;
+    if (!file.name.match(/\.(csv|txt)$/i)) return toast.error('Arquivo deve ser .csv ou .txt');
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: h => h.trim().toLowerCase().replace(/\s+/g, '_'),
+      complete: ({ data }) => {
+        const errosLocais = [];
+        const STATUS = ['ABERTA','PAGA','VENCIDA','PARCIAL','CANCELADA'];
+
+        const parsed = data.map((r, i) => {
+          const linha  = i + 2;
+          const valor  = parseFloat((r.valor || '').toString().replace(',', '.'));
+          const data_v = (r.data_vencimento || r.data || '').trim();
+          const status = (r.status || 'ABERTA').toUpperCase().trim();
+
+          if (!r.descricao?.trim())                       errosLocais.push({ linha, msg: 'descricao obrigatória' });
+          else if (!/^\d{4}-\d{2}-\d{2}$/.test(data_v)) errosLocais.push({ linha, msg: `data "${data_v}" inválida (use AAAA-MM-DD)` });
+          else if (isNaN(valor) || valor <= 0)            errosLocais.push({ linha, msg: `valor "${r.valor}" inválido` });
+
+          const { fornecedor, tipo: matchTipo } = matchFornecedor(r.descricao?.trim() || '', fornecedores);
+
+          return {
+            descricao      : r.descricao?.trim() || '',
+            valor,
+            data_vencimento: data_v,
+            status         : STATUS.includes(status) ? status : 'ABERTA',
+            observacao     : r.observacao?.trim() || '',
+            _ok            : errosLocais.filter(e => e.linha === linha).length === 0,
+            _fornecedor    : fornecedor,
+            _matchTipo     : matchTipo,
+          };
+        });
+
+        setRows(parsed);
+        setErros(errosLocais);
+      },
+    });
+  };
+
+  const handleImportar = async () => {
+    if (erros.length > 0) return toast.error('Corrija os erros antes de importar');
+    const validas = rows.filter(r => r._ok);
+    if (!validas.length) return toast.error('Nenhuma linha válida');
+    setLoading(true);
+    try {
+      const linhas = validas.map(({ _ok, _fornecedor, _matchTipo, ...r }) => ({
+        ...r,
+        fornecedor_id  : _fornecedor?.id || null,
+        fornecedor_nome: _matchTipo === 'novo' ? r.descricao : null,
+        fornecedor_novo: _matchTipo === 'novo',
+      }));
+
+      const res = await api.financeiro.importarContasPagar(linhas);
+      toast.success(
+        `${res.importadas} conta(s) a pagar importada(s)!` +
+        (res.fornecedores_criados > 0 ? ` ${res.fornecedores_criados} fornecedor(es) cadastrado(s).` : '')
+      );
+      reset(); onSave();
+    } catch (e) {
+      toast.error(e.message);
+    } finally { setLoading(false); }
+  };
+
+  const handleClose = () => { reset(); onClose(); };
+
+  const linhasOk   = rows.filter(r => r._ok).length;
+  const linhasErro = rows.filter(r => !r._ok).length;
+  const novosCount = [...new Set(rows.filter(r => r._ok && r._matchTipo === 'novo').map(r => r.descricao))].length;
+  const matchCount = rows.filter(r => r._ok && (r._matchTipo === 'match' || r._matchTipo === 'parcial')).length;
+
+  return (
+    <Modal open={open} onClose={handleClose} title="Importar Contas a Pagar via CSV" size="lg">
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-xl text-sm text-blue-800">
+          <AlertCircle size={16} className="shrink-0 mt-0.5" />
+          <div>
+            Colunas obrigatórias: <strong>descricao, valor, data_vencimento</strong> (AAAA-MM-DD). Opcionais: status, observacao.
+            <button onClick={downloadTemplateCP} className="ml-2 underline font-medium flex items-center gap-1 inline-flex">
+              <Download size={12} /> Baixar modelo
+            </button>
+          </div>
+        </div>
+
+        {rows.length === 0 ? (
+          <div
+            className="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center cursor-pointer hover:border-unicri-orange/40 transition-colors"
+            onClick={() => inputRef.current?.click()}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+          >
+            <Upload size={28} className="mx-auto text-gray-300 mb-3" />
+            <p className="text-gray-500 text-sm">Arraste um arquivo CSV ou <span className="text-unicri-orange font-medium">clique para selecionar</span></p>
+            <input ref={inputRef} type="file" accept=".csv,.txt" className="hidden" onChange={e => handleFile(e.target.files[0])} />
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex gap-3 text-sm flex-wrap">
+                <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 size={14} /> {linhasOk} válidas</span>
+                {linhasErro > 0 && <span className="flex items-center gap-1 text-red-500"><AlertCircle size={14} /> {linhasErro} com erro</span>}
+                {matchCount > 0 && <span className="text-xs text-emerald-600">✓ {matchCount} fornecedor(es) encontrado(s)</span>}
+                {novosCount > 0 && <span className="text-xs text-orange-500">+ {novosCount} novo(s) fornecedor(es) serão cadastrados</span>}
+              </div>
+              <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                <X size={12} /> Trocar arquivo
+              </button>
+            </div>
+
+            {erros.length > 0 && (
+              <div className="bg-red-50 rounded-xl p-3 text-xs text-red-700 space-y-1 max-h-28 overflow-y-auto">
+                {erros.map((e, i) => <div key={i}>Linha {e.linha}: {e.msg}</div>)}
+              </div>
+            )}
+
+            <div className="overflow-x-auto max-h-64 border border-gray-100 rounded-xl">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-gray-50">
+                  <tr className="text-left text-gray-400 uppercase tracking-wide">
+                    <th className="px-3 py-2">#</th>
+                    <th className="px-3 py-2">Descrição</th>
+                    <th className="px-3 py-2">Valor</th>
+                    <th className="px-3 py-2">Vencimento</th>
+                    <th className="px-3 py-2">Fornecedor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {rows.map((r, i) => (
+                    <tr key={i} className={r._ok ? '' : 'bg-red-50'}>
+                      <td className="px-3 py-1.5 text-gray-400">{i + 2}</td>
+                      <td className="px-3 py-1.5 font-medium text-gray-700 max-w-[160px] truncate">{r.descricao || <span className="text-red-400">—</span>}</td>
+                      <td className="px-3 py-1.5">{isNaN(r.valor) ? <span className="text-red-400">?</span> : fmt(r.valor)}</td>
+                      <td className="px-3 py-1.5 text-gray-500">{r.data_vencimento || <span className="text-red-400">?</span>}</td>
+                      <td className="px-3 py-1.5">
+                        {r._matchTipo === 'match'   && <span className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded text-xs">✓ {r._fornecedor?.nome}</span>}
+                        {r._matchTipo === 'parcial' && <span className="inline-flex items-center gap-1 text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded text-xs">~ {r._fornecedor?.nome}</span>}
+                        {r._matchTipo === 'novo' && r._ok && <span className="inline-flex items-center gap-1 text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded text-xs">+ novo</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button className="btn-secondary" onClick={handleClose}>Cancelar</button>
+          {rows.length > 0 && (
+            <button className="btn-primary" onClick={handleImportar} disabled={loading || erros.length > 0}>
+              {loading ? 'Importando…' : `Importar ${linhasOk} contas${novosCount > 0 ? ` + ${novosCount} fornecedores` : ''}`}
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Modal Importar NF via XML ────────────────────────────────────
 function ModalImportarNF({ open, onClose, fornecedores, planoContas, onSave }) {
   const inputRef                  = useRef();
@@ -402,6 +601,7 @@ export default function ContasPagar() {
   const [editando, setEditando] = useState(null);
   const [pagando, setPagando]   = useState(null);
   const [showImportNF, setShowImportNF] = useState(false);
+  const [showImportCSV, setShowImportCSV] = useState(false);
   const [filtros, setFiltros] = useState({ status: '', search: '' });
 
   const carregar = async () => {
@@ -430,6 +630,9 @@ export default function ContasPagar() {
         subtitle="Gerencie seus compromissos financeiros"
         actions={
           <div className="flex gap-2">
+            <button className="btn-secondary" onClick={() => setShowImportCSV(true)}>
+              <Upload size={16} /> Importar CSV
+            </button>
             <button className="btn-secondary" onClick={() => setShowImportNF(true)}>
               <FileInput size={16} /> Importar NF
             </button>
@@ -559,6 +762,12 @@ export default function ContasPagar() {
       </Modal>
 
       <ModalPagar conta={pagando} onClose={() => setPagando(null)} onSave={() => { setPagando(null); carregar(); }} />
+
+      <ModalImportarCSV
+        open={showImportCSV}
+        onClose={() => setShowImportCSV(false)}
+        onSave={() => { setShowImportCSV(false); carregar(); }}
+      />
 
       <ModalImportarNF
         open={showImportNF}
