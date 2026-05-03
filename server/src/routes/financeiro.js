@@ -843,7 +843,7 @@ router.post('/importar-contas-pagar', async (req, res) => {
         fornecedorMap[nome] = existe.id;
       } else {
         const { data: novo, error } = await db.from('fornecedores')
-          .insert({ nome, empresa_id: req.empresaId, ativo: true })
+          .insert({ nome, tipo: 'JURIDICA', empresa_id: req.empresaId, ativo: true })
           .select('id')
           .single();
         if (error) throw error;
@@ -869,7 +869,7 @@ router.post('/importar-contas-pagar', async (req, res) => {
       // Último recurso: cria fornecedor com o nome da descrição
       if (!fornecedor_id) {
         const { data: fc, error: fe } = await db.from('fornecedores')
-          .insert({ nome: l.descricao, empresa_id: req.empresaId, ativo: true })
+          .insert({ nome: l.descricao, tipo: 'JURIDICA', empresa_id: req.empresaId, ativo: true })
           .select('id')
           .single();
         if (fe) throw fe;
