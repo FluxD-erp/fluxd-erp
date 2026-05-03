@@ -851,22 +851,44 @@ router.post('/importar-contas-pagar', async (req, res) => {
       }
     }
 
-    // 2. Monta contas a pagar
-    const contas = linhas.map(l => {
-      const fornecedor_id = l.fornecedor_id || fornecedorMap[l.fornecedor_nome] || null;
-      return {
+    // 2. Monta contas a pagar — garante fornecedor_id preenchido
+    const contas = [];
+    for (const l of linhas) {
+      let fornecedor_id = l.fornecedor_id || fornecedorMap[l.fornecedor_nome] || null;
+
+      // Se ainda null, tenta buscar pelo nome da descrição como fallback
+      if (!fornecedor_id) {
+        const { data: fb } = await db.from('fornecedores')
+          .select('id')
+          .eq('empresa_id', req.empresaId)
+          .ilike('nome', l.descricao)
+          .maybeSingle();
+        if (fb) fornecedor_id = fb.id;
+      }
+
+      // Último recurso: cria fornecedor com o nome da descrição
+      if (!fornecedor_id) {
+        const { data: fc, error: fe } = await db.from('fornecedores')
+          .insert({ nome: l.descricao, empresa_id: req.empresaId, ativo: true })
+          .select('id')
+          .single();
+        if (fe) throw fe;
+        fornecedor_id = fc.id;
+      }
+
+      contas.push({
         fornecedor_id,
-        descricao      : l.descricao,
-        valor_original : parseFloat(l.valor),
-        valor_pago     : 0,
-        data_emissao   : l.data_vencimento, // usa vencimento como emissão se não tiver
-        data_vencimento: l.data_vencimento,
+        descricao       : l.descricao,
+        valor_original  : parseFloat(l.valor),
+        valor_pago      : 0,
+        data_emissao    : l.data_vencimento,
+        data_vencimento : l.data_vencimento,
         numero_documento: l.numero_documento || null,
-        observacao     : l.observacao || null,
-        status         : 'ABERTA',
-        empresa_id     : req.empresaId,
-      };
-    });
+        observacao      : l.observacao || null,
+        status          : 'ABERTA',
+        empresa_id      : req.empresaId,
+      });
+    }
 
     const { data, error } = await db.from('contas_pagar').insert(contas).select();
     if (error) throw error;
