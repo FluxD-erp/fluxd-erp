@@ -34,33 +34,27 @@ O Vite faz proxy de `/api/*` → `http://localhost:3001` (vite.config.js).
 | Camada | Tecnologia |
 |---|---|
 | Frontend | React 18 + Vite + Tailwind CSS + Recharts + Lucide + react-hot-toast |
-| Backend | Node.js + Express (porta 3001) |
-| Banco local | sql.js (SQLite WebAssembly) — arquivo `server/unicri.db` |
+| Backend | Node.js + Express (porta 3001 local / Vercel Serverless Function) |
+| Banco | Supabase (PostgreSQL) — todas as tabelas financeiras |
 | Auth + RBAC | Supabase Auth + tabela `profiles` (PostgreSQL) |
 | Audit Log | Supabase tabela `audit_logs` com triggers PostgreSQL |
 
-### Banco de dados local — DbShim (CRÍTICO)
+### Banco de dados — Supabase (PostgreSQL)
 
-O servidor usa `sql.js` (SQLite em WebAssembly, sem compilação nativa). Há um wrapper `DbShim` em `server/src/db/schema.js` que emula a API do `better-sqlite3`.
+Todas as rotas do servidor usam o client Supabase (`server/src/db/supabase.js`) com a `service_role` key. O arquivo `server/src/db/schema.js` (SQLite/sql.js) é legado e não é mais usado em produção.
 
-**Armadilha crítica:** `stmt.getAsObject({})` com argumento em sql.js re-faz o bind e avança o cursor, retornando dados errados. O DbShim usa `stmt.getColumnNames()` + `stmt.get()` em vez disso.
+### Deploy — Vercel (monorepo)
 
-```js
-// CORRETO — usado no DbShim
-const cols = stmt.getColumnNames();
-const vals = stmt.get();
-const row = {};
-cols.forEach((col, i) => { row[col] = vals[i]; });
+O projeto é deployado como monorepo no Vercel:
+- **Frontend:** `client/` — build com Vite, servido como static
+- **Backend:** `server/api/index.js` — Serverless Function que exporta o Express app
+- **Rewrites:** `/api/*` → serverless function, `/*` → SPA (`index.html`)
 
-// ERRADO — não usar
-stmt.getAsObject({})
-```
-
-O banco é mantido **em memória** e persistido em disco via `_save()` (exporta buffer e escreve em `unicri.db`) a cada operação de escrita. `transaction()` no shim não usa SQL BEGIN/COMMIT — apenas executa a função e chama `_save()`.
+Configuração em `vercel.json` na raiz do repositório.
 
 ### Seed
 
-O seed roda inline em `server/src/index.js` (não em `src/db/seed.js`). Executa apenas se `COUNT(*) FROM lancamentos = 0`. Usa `db._db.exec()` diretamente no sql.js para checar o count (bypassa o shim por confiabilidade).
+O seed original (SQLite) é legado. Os dados agora vivem no Supabase (migrations em `supabase/migrations/`).
 
 ### Rotas do servidor
 
@@ -151,11 +145,16 @@ await logAction({ tableName: 'contas_pagar', recordId: id, action: 'INSERT', new
 # client/.env
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
+VITE_API_URL=
 
-# server/.env
+# server env (Vercel dashboard ou .env local)
 PORT=3001
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+APP_URL=https://fluxd-erp.vercel.app
+STRIPE_SECRET_KEY=
+STRIPE_PRICE_PRO=
+STRIPE_WEBHOOK_SECRET=
 ```
 
 O servidor usa `dotenv` — `require('dotenv').config()` está na primeira linha de `server/src/index.js`.

@@ -1,15 +1,15 @@
 # FluxD ERP — Progresso do Projeto
 
 > Última atualização: 02/05/2026 (sessão 2)
-> Stack: React 18 + Vite · Node.js/Express · Supabase (PostgreSQL) · Netlify (front) · Render (back)
+> Stack: React 18 + Vite · Node.js/Express · Supabase (PostgreSQL) · Vercel (monorepo)
 
 ---
 
 ## Estado atual: Produção ✅
 
-- **Frontend (ERP):** https://fluxd-erp.netlify.app
-- **Backend:** https://fluxd-erp.onrender.com
-- **Landing page:** implementada, pendente deploy no Netlify
+- **Frontend (ERP):** https://fluxd-erp.vercel.app
+- **Backend (API):** https://fluxd-erp.vercel.app/api
+- **Landing page:** implementada, pendente deploy
 
 ---
 
@@ -109,9 +109,7 @@
 - Planos no servidor: `PLANOS` object em `billing.js` com `essencial`, `pro`, `multi` (essencial e multi sem price IDs reais ainda).
 
 ### Infraestrutura
-- **Frontend ERP:** Netlify com `_redirects` para SPA routing.
-- **Backend:** Render (Node.js) — plano gratuito hiberna após inatividade.
-- **Landing:** pasta `/landing` no repo, build com Vite + Tailwind. Pendente site separado no Netlify.
+- **Deploy:** Vercel monorepo — frontend (Vite build) + backend (Serverless Function Express).
 - **CORS:** lista de origens via `APP_URL` (separado por vírgula) + `localhost:5173`.
 
 ---
@@ -138,13 +136,13 @@
 # client/.env
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
-VITE_API_URL=https://fluxd-erp.onrender.com
+VITE_API_URL=
 
-# server/.env (Render)
+# server/.env (Vercel env vars)
 PORT=3001
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
-APP_URL=https://fluxd-erp.netlify.app
+APP_URL=https://fluxd-erp.vercel.app
 STRIPE_SECRET_KEY=
 STRIPE_PRICE_PRO=price_1TSc661WxeziN2F5XUbiEWgx
 STRIPE_WEBHOOK_SECRET=
@@ -155,7 +153,7 @@ STRIPE_WEBHOOK_SECRET=
 ## Próximos passos
 
 ### Prioritários
-- [ ] **Deploy da landing page** — criar novo site no Netlify apontando para `landing/` (base dir: `landing`, build: `npm run build`, publish: `landing/dist`)
+- [ ] **Deploy da landing page** — configurar como projeto separado no Vercel ou subpath
 - [ ] **Aplicar migration RLS** — executar `supabase/migrations/08_rls.sql` no SQL Editor do Supabase
 
 ### Produto
@@ -166,5 +164,4 @@ STRIPE_WEBHOOK_SECRET=
 - [ ] **Paginação em Lançamentos** — hoje limitado a 200 registros
 
 ### Técnico
-- [ ] **Upgrade Render** — plano gratuito hiberna; avaliar plano pago
 - [ ] **Testes automatizados** — endpoints críticos

@@ -1,8 +1,6 @@
 require('dotenv').config();
 const express   = require('express');
 const cors      = require('cors');
-const path      = require('path');
-const fs        = require('fs');
 const rateLimit = require('express-rate-limit');
 
 const app  = express();
@@ -26,14 +24,13 @@ app.use(cors({
 
 // Rate limiting — limites por IP
 const defaultLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
+  windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Muitas requisições. Tente novamente em alguns minutos.' },
 });
 
-// Endpoints de auth/login mais restritivos
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -44,7 +41,6 @@ const authLimiter = rateLimit({
 
 app.use('/api', defaultLimiter);
 app.use('/api/admin/invite-user', authLimiter);
-// Webhook Stripe precisa de raw body — montar ANTES do express.json()
 app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
@@ -57,12 +53,9 @@ app.use('/api/empresas',   require('./routes/empresas'));
 app.use('/api/billing',    require('./routes/billing'));
 app.get('/api/health',     (req, res) => res.json({ status: 'ok' }));
 
-// Serve o build do frontend em produção
-const distIndex = path.join(__dirname, '../../client/dist/index.html');
-app.use(express.static(path.join(__dirname, '../../client/dist')));
-app.get('*', (req, res) => {
-  if (fs.existsSync(distIndex)) res.sendFile(distIndex);
-  else res.send('Dev mode: acesse http://localhost:5173');
-});
+// Só faz listen quando executado diretamente (não em serverless)
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`FluxD server rodando na porta ${PORT}`));
+}
 
-app.listen(PORT, () => console.log(`FluxD server rodando na porta ${PORT}`));
+module.exports = app;
