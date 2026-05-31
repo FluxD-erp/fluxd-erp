@@ -126,6 +126,7 @@ export const api = {
     antecipar   : (data)          => req('/recebiveis-cartao/antecipar', { method: 'POST', body: data }),
     receber     : (id)            => req(`/recebiveis-cartao/${id}/receber`, { method: 'PATCH' }),
     cancelar    : (id)            => req(`/recebiveis-cartao/${id}`, { method: 'DELETE' }),
+    limpar      : ()              => req('/recebiveis-cartao', { method: 'DELETE' }),
     antecipacoes: ()              => req('/recebiveis-cartao/antecipacoes'),
   },
 

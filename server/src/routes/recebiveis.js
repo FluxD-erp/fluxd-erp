@@ -222,6 +222,21 @@ router.patch('/:id/receber', async (req, res) => {
   }
 });
 
+// ── DELETE /api/recebiveis-cartao (limpar todos os PENDENTE) ────
+router.delete('/', async (req, res) => {
+  try {
+    const { error, count } = await db
+      .from('recebiveis_cartao')
+      .delete({ count: 'exact' })
+      .eq('empresa_id', req.empresaId)
+      .eq('status', 'PENDENTE');
+    if (error) throw error;
+    res.json({ removidos: count });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── DELETE /api/recebiveis-cartao/:id ───────────────────────────
 router.delete('/:id', async (req, res) => {
   try {

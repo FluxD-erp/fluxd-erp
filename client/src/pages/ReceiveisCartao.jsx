@@ -434,6 +434,16 @@ export default function ReceiveisCartao() {
                 <Zap size={16} /> Antecipar {selecionados.size} selecionado(s)
               </button>
             )}
+            <button className="btn-danger" onClick={async () => {
+              if (!confirm('Remover todos os recebíveis PENDENTE? Esta ação não pode ser desfeita.')) return;
+              try {
+                const r = await api.recebiveis.limpar();
+                toast.success(`${r.removidos ?? 0} recebível(is) removido(s).`);
+                carregar();
+              } catch (e) { toast.error(e.message); }
+            }}>
+              <X size={16} /> Limpar importação
+            </button>
             <button className="btn-secondary" onClick={() => setShowImport(true)}>
               <Upload size={16} /> Importar CSV Rede
             </button>
