@@ -78,42 +78,84 @@ function ModalImportar({ open, onClose, onSave }) {
 
   const handleFile = useCallback((file) => {
     if (!file) return;
-    if (!file.name.match(/\.(csv|txt|xlsx?)$/i))
+    if (!file.name.match(/\.(csv|txt)$/i))
       return toast.error('Use arquivo .csv ou .txt');
 
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      delimiter: '',          // auto-detecta , ou ;
+      encoding: 'ISO-8859-1', // arquivos brasileiros geralmente ISO
       transformHeader: h => h.trim().toLowerCase()
-        .normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/[\s/()]+/g, '_'),
-      complete: ({ data }) => {
+        .normalize('NFD').replace(/[̀-ͯ]/g, '') // remove acentos
+        .replace(/[^a-z0-9]+/g, '_')                      // qualquer não-alfanum → _
+        .replace(/^_|_$/g, ''),                            // remove _ inicial/final
+      complete: ({ data, meta }) => {
+        // Debug: mostra as colunas detectadas no console para diagnóstico
+        if (data.length > 0) {
+          console.log('Colunas detectadas no CSV da Rede:', Object.keys(data[0]));
+          console.log('Delimitador detectado:', meta.delimiter);
+          console.log('Primeira linha:', data[0]);
+        }
+
         const errosLocais = [];
         const parsed = data.map((r, i) => {
-          const linha         = i + 2;
-          const data_venda    = parseData(r.data_venda   || r.data_transacao || r.venda || '');
-          const data_prevista = parseData(r.data_prevista|| r.data_pagamento  || r.previsao || '');
-          const valor_bruto   = parseValor(r.valor_bruto  || r.valor || r.vl_bruto || '');
-          const valor_liquido = parseValor(r.valor_liquido|| r.vl_liquido || r.valor_liq || '');
-          const taxa_mdr      = parseValor(r.taxa_mdr     || r.mdr || r.taxa || '');
-          const parcela_atual = parseInt(r.parcela || r.parcela_atual || '1') || 1;
-          const num_parcelas  = parseInt(r.total_parcelas || r.num_parcelas || '1') || 1;
+          const linha = i + 2;
+
+          // Datas — nomes usados pela Rede: "data_da_venda", "data_venda", "data_transacao", etc.
+          const data_venda = parseData(
+            r.data_da_venda || r.data_venda || r.data_transacao ||
+            r.data_da_transacao || r.dt_venda || r.venda || ''
+          );
+          // Previsão de pagamento
+          const data_prevista = parseData(
+            r.data_de_pagamento || r.data_pagamento || r.data_prevista ||
+            r.data_previsao || r.previsao || r.dt_pagamento ||
+            r.data_de_previsao_de_pagamento || ''
+          );
+          // Valores — Rede usa "valor_bruto_r_" após normalização de "Valor Bruto (R$)"
+          const valor_bruto = parseValor(
+            r.valor_bruto || r.valor_bruto_r_ || r.vl_bruto ||
+            r.valor_r_ || r.valor || r.vl_lancamento || ''
+          );
+          const valor_liquido = parseValor(
+            r.valor_liquido || r.valor_liquido_r_ || r.vl_liquido ||
+            r.valor_liq || r.vl_liquido_r_ || ''
+          );
+          const taxa_mdr = parseValor(
+            r.taxa_mdr || r.taxa || r.mdr || r.perc_taxa || ''
+          );
+          // Parcelas — Rede usa "nr_parcela" / "numero_da_parcela" / "parcela"
+          const parcela_atual = parseInt(
+            r.nr_parcela || r.numero_da_parcela || r.parcela_atual ||
+            r.parcela || r.num_parcela || '1'
+          ) || 1;
+          const num_parcelas = parseInt(
+            r.total_parcelas || r.qt_parcelas || r.quantidade_de_parcelas ||
+            r.num_parcelas || r.total || '1'
+          ) || 1;
+          // Bandeira — "tipo_de_cartao", "bandeira", "produto"
+          const bandeira = (
+            r.bandeira || r.tipo_de_cartao || r.tipo_cartao ||
+            r.produto || r.rede || ''
+          ).toUpperCase().replace('MASTERCARD', 'MASTERCARD')
+            .replace('MASTER', 'MASTERCARD') || null;
 
           if (!data_venda)    errosLocais.push({ linha, msg: 'data_venda inválida' });
           if (!data_prevista) errosLocais.push({ linha, msg: 'data_prevista inválida' });
           if (!valor_bruto)   errosLocais.push({ linha, msg: 'valor inválido' });
 
           return {
-            operadora   : (r.operadora || 'REDE').toUpperCase(),
-            bandeira    : (r.bandeira  || r.cartao || '').toUpperCase() || null,
-            nsu         : r.nsu || r.cod_transacao || null,
-            terminal    : r.terminal || r.pos || null,
+            operadora    : 'REDE',
+            bandeira,
+            nsu          : r.nsu || r.numero_do_doc || r.doc || null,
+            terminal     : r.terminal || r.numero_do_terminal || r.pv || null,
             data_venda,
             data_prevista,
-            descricao   : r.descricao || r.estabelecimento || null,
+            descricao    : r.descricao || r.historico || null,
             valor_bruto,
-            taxa_mdr    : taxa_mdr / 100 || 0,
-            valor_liquido: valor_liquido || Math.round(valor_bruto * (1 - taxa_mdr / 100) * 100) / 100,
+            taxa_mdr     : taxa_mdr > 1 ? taxa_mdr / 100 : taxa_mdr, // normaliza %
+            valor_liquido: valor_liquido || Math.round(valor_bruto * 100) / 100,
             parcela_atual,
             num_parcelas,
             _ok: errosLocais.filter(e => e.linha === linha).length === 0,
@@ -147,7 +189,7 @@ function ModalImportar({ open, onClose, onSave }) {
             <li>Menu <strong>Financeiro → Agenda de Recebíveis</strong></li>
             <li>Selecione o período e clique em <strong>Exportar CSV</strong></li>
           </ol>
-          <p className="mt-1">Colunas reconhecidas: data_venda, data_prevista, valor_bruto, valor_liquido, taxa_mdr, parcela, total_parcelas, bandeira, nsu</p>
+          <p className="mt-1">Compatível com o arquivo <strong>pagamentos_futuros</strong> exportado da Rede. Se houver erros, abra o CSV no Notepad e cole os cabeçalhos no chat para diagnóstico.</p>
         </div>
 
         {rows.length === 0 ? (
