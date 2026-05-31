@@ -109,22 +109,28 @@ function ModalImportar({ open, onClose, onSave }) {
 
           const data_prevista = parseData(
             r.data_prevista_do_recebimento ||   // Rede pagamentos_futuros
+            r.data_do_recebimento ||            // Rede pagamentos
             r.data_de_pagamento || r.data_pagamento || r.data_prevista ||
-            r.data_previsao || r.previsao || r.dt_pagamento || ''
+            r.data_previsao || r.previsao || r.dt_pagamento ||
+            r.data || ''                        // Rede recebidos
           );
           const data_venda = parseData(
-            r.data_original_da_venda ||          // Rede pagamentos_futuros
+            r.data_original_da_venda ||          // Rede pagamentos_futuros / pagamentos
             r.data_da_venda || r.data_venda || r.data_transacao ||
-            r.dt_venda || r.venda || ''
+            r.dt_venda || r.venda ||
+            r.data || ''                         // Rede recebidos (única data)
           );
           const valor_bruto = parseValor(
-            r.valor_bruto_da_parcela_original || // Rede pagamentos_futuros
+            r.valor_bruto_da_parcela_original || // Rede pagamentos_futuros / pagamentos
             r.valor_bruto_da_parcela_atualizada ||
-            r.valor_bruto || r.vl_bruto || r.valor || ''
+            r.valor_bruto || r.vl_bruto ||
+            r.valor_depositado ||                // Rede recebidos
+            r.valor || ''
           );
           const valor_liquido = parseValor(
-            r.valor_liquido_da_parcela ||        // Rede pagamentos_futuros
-            r.valor_liquido || r.vl_liquido || r.valor_liq || ''
+            r.valor_liquido_da_parcela ||        // Rede pagamentos_futuros / pagamentos
+            r.valor_liquido || r.vl_liquido || r.valor_liq ||
+            r.valor_depositado || ''             // Rede recebidos
           );
           // taxa MDR vem como "3,39%" — parseValor extrai o número
           const taxa_mdr = parseValor(
