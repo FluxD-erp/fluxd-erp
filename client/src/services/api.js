@@ -112,8 +112,9 @@ export const api = {
 
     planoContas: () => req('/financeiro/plano-contas'),
     fluxoCaixa : (params = {}) => req(`/financeiro/fluxo-caixa?${new URLSearchParams(params)}`),
-    dre        : (params = {}) => req(`/financeiro/dre?${new URLSearchParams(params)}`),
+    dre         : (params = {}) => req(`/financeiro/dre?${new URLSearchParams(params)}`),
     dreAnalitico: (params = {}) => req(`/financeiro/dre/analitico?${new URLSearchParams(params)}`),
+    relatorioFC : (params = {}) => req(`/financeiro/relatorio-fc?${new URLSearchParams(params)}`),
   },
 
   // Contas Bancárias

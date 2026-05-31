@@ -570,20 +570,132 @@ router.get('/fluxo-caixa', async (req, res) => {
 });
 
 // ----------------------------------------------------------------
+// GET /financeiro/relatorio-fc — Fluxo de Caixa mensal p/ relatório
+// modo=realizado: só PAGO | modo=projetado: inclui pendentes + c.pagar/receber
+// ----------------------------------------------------------------
+router.get('/relatorio-fc', async (req, res) => {
+  try {
+    const hoje       = new Date().toISOString().split('T')[0];
+    const dataInicio = req.query.inicio || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+    const dataFim    = req.query.fim    || hoje;
+    const modo       = req.query.modo   || 'realizado';
+
+    // Lançamentos
+    let q = db.from('lancamentos')
+      .select('tipo, valor, data_competencia, status')
+      .eq('empresa_id', req.empresaId)
+      .gte('data_competencia', dataInicio)
+      .lte('data_competencia', dataFim)
+      .neq('tipo', 'TRANSFERENCIA');
+
+    if (modo === 'realizado') q = q.eq('status', 'PAGO');
+    else                      q = q.in('status', ['PAGO', 'PENDENTE']);
+
+    const { data: lancs, error } = await q;
+    if (error) throw error;
+
+    // Saldo anterior (só realizado para manter base correta)
+    const { data: ant } = await db.from('lancamentos')
+      .select('tipo, valor')
+      .eq('empresa_id', req.empresaId)
+      .eq('status', 'PAGO')
+      .lt('data_competencia', dataInicio)
+      .neq('tipo', 'TRANSFERENCIA');
+
+    const saldoAnterior = (ant || []).reduce((s, r) =>
+      s + (r.tipo === 'RECEITA' ? Number(r.valor) : -Number(r.valor)), 0);
+
+    // Agrupa por mês
+    const meses = {};
+    const addMes = (mesKey, tipo, valor) => {
+      if (!meses[mesKey]) meses[mesKey] = { mes: mesKey, entradas: 0, saidas: 0, projetado_entradas: 0, projetado_saidas: 0 };
+      if (tipo === 'RECEITA') meses[mesKey].entradas += valor;
+      else                    meses[mesKey].saidas   += valor;
+    };
+
+    (lancs || []).forEach(r => {
+      addMes(r.data_competencia.slice(0, 7), r.tipo, Number(r.valor));
+    });
+
+    // Projetado: inclui contas a pagar/receber
+    if (modo === 'projetado') {
+      const [{ data: cp }, { data: cr }] = await Promise.all([
+        db.from('contas_pagar').select('data_vencimento, valor_original, valor_pago')
+          .eq('empresa_id', req.empresaId)
+          .in('status', ['ABERTA', 'PARCIAL', 'PENDENTE'])
+          .gte('data_vencimento', dataInicio).lte('data_vencimento', dataFim),
+        db.from('contas_receber').select('data_vencimento, valor_original, valor_recebido')
+          .eq('empresa_id', req.empresaId)
+          .in('status', ['ABERTA', 'PARCIAL', 'PENDENTE'])
+          .gte('data_vencimento', dataInicio).lte('data_vencimento', dataFim),
+      ]);
+      (cp || []).forEach(c => addMes(c.data_vencimento.slice(0, 7), 'DESPESA', Number(c.valor_original) - Number(c.valor_pago || 0)));
+      (cr || []).forEach(c => addMes(c.data_vencimento.slice(0, 7), 'RECEITA', Number(c.valor_original) - Number(c.valor_recebido || 0)));
+    }
+
+    // Ordena e calcula saldo acumulado
+    const linhas = Object.values(meses).sort((a, b) => a.mes.localeCompare(b.mes));
+    let saldo = saldoAnterior;
+    linhas.forEach(l => {
+      l.resultado     = l.entradas - l.saidas;
+      saldo          += l.resultado;
+      l.saldo_acumulado = saldo;
+    });
+
+    const totalEntradas = linhas.reduce((s, l) => s + l.entradas, 0);
+    const totalSaidas   = linhas.reduce((s, l) => s + l.saidas, 0);
+
+    res.json({ saldo_anterior: saldoAnterior, linhas, total_entradas: totalEntradas, total_saidas: totalSaidas, resultado: totalEntradas - totalSaidas });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ----------------------------------------------------------------
 // DRE
 // ----------------------------------------------------------------
 router.get('/dre', async (req, res) => {
   try {
-    const hoje     = new Date().toISOString().split('T')[0];
+    const hoje       = new Date().toISOString().split('T')[0];
     const dataInicio = req.query.inicio || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
     const dataFim    = req.query.fim    || hoje;
+    const modo       = req.query.modo   || 'realizado'; // 'realizado' | 'projetado'
 
-    const { data: rows, error } = await db.from('lancamentos')
+    // Realizado: só PAGO. Projetado: PAGO + PENDENTE
+    let q = db.from('lancamentos')
       .select('tipo, valor, plano_contas!conta_id(codigo, nome)')
       .eq('empresa_id', req.empresaId)
-      .eq('status', 'PAGO')
       .gte('data_competencia', dataInicio)
       .lte('data_competencia', dataFim);
+
+    if (modo === 'realizado') {
+      q = q.eq('status', 'PAGO');
+    } else {
+      q = q.in('status', ['PAGO', 'PENDENTE']);
+    }
+
+    // Projetado: também inclui contas a pagar/receber abertas no período
+    let rowsExtras = [];
+    if (modo === 'projetado') {
+      const [{ data: cp }, { data: cr }] = await Promise.all([
+        db.from('contas_pagar')
+          .select('valor_original, valor_pago')
+          .eq('empresa_id', req.empresaId)
+          .in('status', ['ABERTA', 'PARCIAL', 'PENDENTE'])
+          .gte('data_vencimento', dataInicio)
+          .lte('data_vencimento', dataFim),
+        db.from('contas_receber')
+          .select('valor_original, valor_recebido')
+          .eq('empresa_id', req.empresaId)
+          .in('status', ['ABERTA', 'PARCIAL', 'PENDENTE'])
+          .gte('data_vencimento', dataInicio)
+          .lte('data_vencimento', dataFim),
+      ]);
+      (cp || []).forEach(c => rowsExtras.push({ tipo: 'DESPESA', valor: Number(c.valor_original) - Number(c.valor_pago || 0), plano_contas: null }));
+      (cr || []).forEach(c => rowsExtras.push({ tipo: 'RECEITA', valor: Number(c.valor_original) - Number(c.valor_recebido || 0), plano_contas: null }));
+    }
+
+    const { data: rows, error } = await q;
 
     if (error) throw error;
 
@@ -592,7 +704,7 @@ router.get('/dre', async (req, res) => {
     let totalReceitas  = 0;
     let totalDespesas  = 0;
 
-    (rows || []).forEach(r => {
+    [...(rows || []), ...rowsExtras].forEach(r => {
       const v    = Number(r.valor);
       const key  = r.plano_contas?.codigo || '?';
       const nome = r.plano_contas?.nome   || 'Sem conta';
