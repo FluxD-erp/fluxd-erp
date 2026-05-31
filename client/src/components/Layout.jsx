@@ -508,7 +508,7 @@ function BottomNav({ onOpenMenu }) {
 export default function Layout({ children }) {
   const [collapsed, setCollapsed]   = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { profile, signOut }        = useAuth();
+  const { profile, signOut, empresaAtiva } = useAuth();
   const navigate                    = useNavigate();
 
   // Fecha sidebar mobile ao navegar
@@ -629,8 +629,8 @@ export default function Layout({ children }) {
           <UserMenuDropdown />
         </header>
 
-        {/* Conteúdo */}
-        <main className="flex-1 overflow-y-auto bg-gray-50 p-4 lg:p-6 pb-20 lg:pb-6">
+        {/* Conteúdo — key força remount ao trocar de empresa, rebuscando todos os dados */}
+        <main key={empresaAtiva?.id} className="flex-1 overflow-y-auto bg-gray-50 p-4 lg:p-6 pb-20 lg:pb-6">
           {children}
         </main>
       </div>
