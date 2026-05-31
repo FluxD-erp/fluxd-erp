@@ -102,44 +102,46 @@ function ModalImportar({ open, onClose, onSave }) {
         const parsed = data.map((r, i) => {
           const linha = i + 2;
 
-          // Datas — nomes usados pela Rede: "data_da_venda", "data_venda", "data_transacao", etc.
-          const data_venda = parseData(
-            r.data_da_venda || r.data_venda || r.data_transacao ||
-            r.data_da_transacao || r.dt_venda || r.venda || ''
-          );
-          // Previsão de pagamento
+          // ── Nomes EXATOS do CSV da Rede (pagamentos_futuros) ──────────
+          // data_prevista_do_recebimento ; data_original_da_venda
+          // valor_bruto_da_parcela_original ; taxa_mdr (ex: "3,39%")
+          // valor_liquido_da_parcela ; numero_de_parcelas ; parcela ; bandeira ; nsu_cv
+
           const data_prevista = parseData(
+            r.data_prevista_do_recebimento ||   // Rede pagamentos_futuros
             r.data_de_pagamento || r.data_pagamento || r.data_prevista ||
-            r.data_previsao || r.previsao || r.dt_pagamento ||
-            r.data_de_previsao_de_pagamento || ''
+            r.data_previsao || r.previsao || r.dt_pagamento || ''
           );
-          // Valores — Rede usa "valor_bruto_r_" após normalização de "Valor Bruto (R$)"
+          const data_venda = parseData(
+            r.data_original_da_venda ||          // Rede pagamentos_futuros
+            r.data_da_venda || r.data_venda || r.data_transacao ||
+            r.dt_venda || r.venda || ''
+          );
           const valor_bruto = parseValor(
-            r.valor_bruto || r.valor_bruto_r_ || r.vl_bruto ||
-            r.valor_r_ || r.valor || r.vl_lancamento || ''
+            r.valor_bruto_da_parcela_original || // Rede pagamentos_futuros
+            r.valor_bruto_da_parcela_atualizada ||
+            r.valor_bruto || r.vl_bruto || r.valor || ''
           );
           const valor_liquido = parseValor(
-            r.valor_liquido || r.valor_liquido_r_ || r.vl_liquido ||
-            r.valor_liq || r.vl_liquido_r_ || ''
+            r.valor_liquido_da_parcela ||        // Rede pagamentos_futuros
+            r.valor_liquido || r.vl_liquido || r.valor_liq || ''
           );
+          // taxa MDR vem como "3,39%" — parseValor extrai o número
           const taxa_mdr = parseValor(
             r.taxa_mdr || r.taxa || r.mdr || r.perc_taxa || ''
           );
-          // Parcelas — Rede usa "nr_parcela" / "numero_da_parcela" / "parcela"
           const parcela_atual = parseInt(
-            r.nr_parcela || r.numero_da_parcela || r.parcela_atual ||
-            r.parcela || r.num_parcela || '1'
+            r.parcela ||                         // Rede usa "parcela"
+            r.nr_parcela || r.numero_da_parcela || r.parcela_atual || '1'
           ) || 1;
           const num_parcelas = parseInt(
-            r.total_parcelas || r.qt_parcelas || r.quantidade_de_parcelas ||
-            r.num_parcelas || r.total || '1'
+            r.numero_de_parcelas ||              // Rede usa "numero_de_parcelas"
+            r.total_parcelas || r.qt_parcelas || r.num_parcelas || '1'
           ) || 1;
-          // Bandeira — "tipo_de_cartao", "bandeira", "produto"
           const bandeira = (
-            r.bandeira || r.tipo_de_cartao || r.tipo_cartao ||
-            r.produto || r.rede || ''
-          ).toUpperCase().replace('MASTERCARD', 'MASTERCARD')
-            .replace('MASTER', 'MASTERCARD') || null;
+            r.bandeira || r.tipo_de_cartao || r.produto || ''
+          ).toUpperCase()
+            .replace(/^MASTER$/, 'MASTERCARD') || null;
 
           if (!data_venda)    errosLocais.push({ linha, msg: 'data_venda inválida' });
           if (!data_prevista) errosLocais.push({ linha, msg: 'data_prevista inválida' });
@@ -148,8 +150,8 @@ function ModalImportar({ open, onClose, onSave }) {
           return {
             operadora    : 'REDE',
             bandeira,
-            nsu          : r.nsu || r.numero_do_doc || r.doc || null,
-            terminal     : r.terminal || r.numero_do_terminal || r.pv || null,
+            nsu          : r.nsu_cv || r.nsu || r.numero_do_doc || null,        // Rede: nsu_cv
+            terminal     : r.estabelecimento || r.terminal || r.pv || null,    // Rede: estabelecimento = PV
             data_venda,
             data_prevista,
             descricao    : r.descricao || r.historico || null,
