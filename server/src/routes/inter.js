@@ -11,6 +11,7 @@ const router  = express.Router();
 const https   = require('https');
 const fetch   = require('node-fetch');
 const { db }  = require('../db/supabase');
+const { encrypt, decrypt } = require('../lib/crypto');
 const { requireAuth }    = require('../middleware/auth');
 const { requireEmpresa } = require('../middleware/empresa');
 
@@ -69,7 +70,7 @@ async function buscarExtrato(token, certPem, keyPem, dataInicio, dataFim) {
 }
 
 // ── POST /api/inter/credenciais/:contaId ─────────────────────────
-// Salva ou atualiza as credenciais Inter da conta bancária
+// Salva credenciais Inter criptografadas na conta bancária
 router.post('/credenciais/:contaId', async (req, res) => {
   try {
     const { inter_client_id, inter_client_secret, inter_cert_pem, inter_key_pem } = req.body;
@@ -78,7 +79,12 @@ router.post('/credenciais/:contaId', async (req, res) => {
 
     const { data, error } = await db
       .from('contas_bancarias')
-      .update({ inter_client_id, inter_client_secret, inter_cert_pem, inter_key_pem })
+      .update({
+        inter_client_id,                          // client_id não é secret, não precisa criptografar
+        inter_client_secret: encrypt(inter_client_secret),
+        inter_cert_pem     : encrypt(inter_cert_pem),
+        inter_key_pem      : encrypt(inter_key_pem),
+      })
       .eq('id', req.params.contaId)
       .eq('empresa_id', req.empresaId)
       .select('id, nome')
@@ -112,9 +118,14 @@ router.get('/extrato/:contaId', async (req, res) => {
     if (!conta.inter_client_id)
       return res.status(400).json({ error: 'Credenciais Inter não configuradas para esta conta.' });
 
+    // Descriptografa credenciais antes de usar
+    const clientSecret = decrypt(conta.inter_client_secret);
+    const certPem      = decrypt(conta.inter_cert_pem);
+    const keyPem       = decrypt(conta.inter_key_pem);
+
     // Obtém token e busca extrato
-    const token     = await obterToken(conta.inter_client_id, conta.inter_client_secret, conta.inter_cert_pem, conta.inter_key_pem);
-    const extrato   = await buscarExtrato(token, conta.inter_cert_pem, conta.inter_key_pem, dataInicio, dataFim);
+    const token     = await obterToken(conta.inter_client_id, clientSecret, certPem, keyPem);
+    const extrato   = await buscarExtrato(token, certPem, keyPem, dataInicio, dataFim);
 
     // Normaliza para o formato padrão do FluxD (igual ao parseOfx)
     const transacoes = (extrato.transacoes || []).map((t, i) => ({
@@ -151,8 +162,11 @@ router.get('/status/:contaId', async (req, res) => {
     if (error || !conta) return res.status(404).json({ error: 'Conta não encontrada.' });
     if (!conta.inter_client_id) return res.json({ conectado: false });
 
-    // Tenta obter um token para validar
-    await obterToken(conta.inter_client_id, conta.inter_client_secret, conta.inter_cert_pem, conta.inter_key_pem);
+    // Descriptografa e testa conexão
+    const clientSecret = decrypt(conta.inter_client_secret);
+    const certPem      = decrypt(conta.inter_cert_pem);
+    const keyPem       = decrypt(conta.inter_key_pem);
+    await obterToken(conta.inter_client_id, clientSecret, certPem, keyPem);
     res.json({ conectado: true, conta: conta.nome });
   } catch (e) {
     res.json({ conectado: false, erro: e.message });
