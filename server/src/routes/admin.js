@@ -41,8 +41,8 @@ router.get('/users', async (req, res) => {
 // Header: X-Empresa-ID (usado para vincular à empresa ativa)
 // ----------------------------------------------------------------
 router.post('/invite-user', async (req, res) => {
-  const { email, nome, perfil = 'VISUALIZACAO' } = req.body;
-  const empresaId = req.headers['x-empresa-id'];
+  const { email, nome, perfil = 'VISUALIZACAO', empresa_id } = req.body;
+  const empresaId = req.headers['x-empresa-id'] || empresa_id;
 
   if (!email || !nome) {
     return res.status(400).json({ error: 'email e nome são obrigatórios.' });

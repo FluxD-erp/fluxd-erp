@@ -544,7 +544,7 @@ function SecaoUsuarios() {
 
       {/* Modais */}
       <Modal open={showInvite} onClose={() => setShowInvite(false)} title="Convidar novo usuário" size="sm">
-        <InviteForm onClose={() => setShowInvite(false)} onSaved={carregar} />
+        <InviteForm empresaId={empresaAtiva?.id} onClose={() => setShowInvite(false)} onSaved={carregar} />
       </Modal>
       <Modal open={showVincular} onClose={() => setShowVincular(false)} title="Vincular usuário à empresa" size="sm">
         <VincularForm empresaId={empresaAtiva?.id} usersGlobais={users} usersVinculados={usersEmpresa}
@@ -554,14 +554,15 @@ function SecaoUsuarios() {
   );
 }
 
-function InviteForm({ onClose, onSaved }) {
+function InviteForm({ onClose, onSaved, empresaId }) {
   const [form, setForm] = useState({ email: '', nome: '', perfil: 'VISUALIZACAO' });
   const [busy, setBusy] = useState(false);
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     const { apiBase, headers } = await getAuthHeaders();
-    const res = await fetch(`${apiBase}/api/admin/invite-user`, { method: 'POST', headers, body: JSON.stringify(form) });
+    const body = { ...form, empresa_id: empresaId };
+    const res = await fetch(`${apiBase}/api/admin/invite-user`, { method: 'POST', headers, body: JSON.stringify(body) });
     const data = await res.json(); setBusy(false);
     if (!res.ok) toast.error(data.error);
     else { toast.success(data.message || `Convite enviado para ${form.email}`); onSaved(); onClose(); }
