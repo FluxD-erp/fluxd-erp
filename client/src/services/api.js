@@ -116,6 +116,15 @@ export const api = {
     dreAnalitico: (params = {}) => req(`/financeiro/dre/analitico?${new URLSearchParams(params)}`),
   },
 
+  // Contas Bancárias
+  contasBancarias: {
+    listar  : ()          => req('/contas-bancarias'),
+    match   : (bankId, acctId) => req(`/contas-bancarias/match?bank_id=${encodeURIComponent(bankId || '')}&acct_id=${encodeURIComponent(acctId || '')}`),
+    criar   : (data)      => req('/contas-bancarias', { method: 'POST', body: data }),
+    atualizar: (id, data) => req(`/contas-bancarias/${id}`, { method: 'PATCH', body: data }),
+    excluir : (id)        => req(`/contas-bancarias/${id}`, { method: 'DELETE' }),
+  },
+
   // Billing (Stripe)
   billing: {
     createCheckout: (data) => req('/billing/create-checkout', { method: 'POST', body: data }),

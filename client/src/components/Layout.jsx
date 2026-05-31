@@ -26,9 +26,10 @@ const NAV = [
   },
   {
     label: 'Cadastros', icon: Users, children: [
-      { label: 'Clientes',        icon: Users,    to: '/clientes' },
-      { label: 'Fornecedores',    icon: Truck,    to: '/fornecedores' },
-      { label: 'Plano de Contas', icon: FileText, to: '/plano-contas' },
+      { label: 'Clientes',          icon: Users,        to: '/clientes' },
+      { label: 'Fornecedores',      icon: Truck,        to: '/fornecedores' },
+      { label: 'Contas Bancárias',  icon: BanknoteIcon, to: '/contas-bancarias' },
+      { label: 'Plano de Contas',   icon: FileText,     to: '/plano-contas' },
     ],
   },
   { label: 'Passivos Especiais', icon: AlertTriangle, to: '/passivos' },

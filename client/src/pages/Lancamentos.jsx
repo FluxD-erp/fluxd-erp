@@ -8,19 +8,31 @@ import Modal from '../components/Modal';
 
 // ── Modal de Importação OFX ──────────────────────────────────────
 function ModalImportar({ open, onClose, onSave }) {
-  const [trns, setTrns]         = useState([]);
-  const [ofxInfo, setOfxInfo]   = useState(null);
-  const [selecionados, setSel]  = useState(new Set());
-  const [planoContas, setPlano] = useState([]);
-  const [contaId, setContaId]   = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [trns, setTrns]                     = useState([]);
+  const [ofxInfo, setOfxInfo]               = useState(null);
+  const [selecionados, setSel]              = useState(new Set());
+  const [planoContas, setPlano]             = useState([]);
+  const [contasBancarias, setContasBanc]   = useState([]);
+  const [contaBancariaId, setContaBancId]  = useState('');
+  const [contaMatchInfo, setContaMatchInfo] = useState(null); // { matched: bool, nome: str }
+  const [contaId, setContaId]               = useState('');
+  const [loading, setLoading]               = useState(false);
   const inputRef = useRef();
 
-  const reset = () => { setTrns([]); setOfxInfo(null); setSel(new Set()); setContaId(''); };
+  const reset = () => {
+    setTrns([]); setOfxInfo(null); setSel(new Set());
+    setContaId(''); setContaBancId(''); setContaMatchInfo(null);
+  };
 
   useEffect(() => {
     if (!open) return;
-    api.financeiro.planoContas().then(p => setPlano(p || [])).catch(() => {});
+    Promise.all([
+      api.financeiro.planoContas(),
+      api.contasBancarias.listar(),
+    ]).then(([p, b]) => {
+      setPlano(p || []);
+      setContasBanc(b || []);
+    }).catch(() => {});
   }, [open]);
 
   const handleFile = useCallback(async (file) => {
@@ -34,6 +46,19 @@ function ModalImportar({ open, onClose, onSave }) {
       setOfxInfo(result);
       setTrns(result.transactions);
       setSel(new Set(result.transactions.map(t => t.fitid)));
+
+      // Auto-match de conta bancária pelo BANKID + ACCTID do OFX
+      if (result.bankId || result.acctId) {
+        try {
+          const match = await api.contasBancarias.match(result.bankId, result.acctId);
+          if (match) {
+            setContaBancId(match.id);
+            setContaMatchInfo({ matched: true, nome: match.nome });
+          } else {
+            setContaMatchInfo({ matched: false, nome: null });
+          }
+        } catch { /* silencioso */ }
+      }
     } catch (e) {
       toast.error('Erro ao ler OFX: ' + e.message);
     }
@@ -47,20 +72,34 @@ function ModalImportar({ open, onClose, onSave }) {
     setSel(s => { const n = new Set(s); n.has(fitid) ? n.delete(fitid) : n.add(fitid); return n; });
   };
 
+  // Ao vincular uma conta bancária pela primeira vez, salva o OFX ID nela
+  const handleContaBancariaChange = async (id) => {
+    setContaBancId(id);
+    if (id && ofxInfo && !contaMatchInfo?.matched) {
+      try {
+        await api.contasBancarias.atualizar(id, {
+          ofx_bank_id: ofxInfo.bankId || '',
+          ofx_acct_id: ofxInfo.acctId || '',
+        });
+      } catch { /* silencioso */ }
+    }
+  };
+
   const handleImportar = async () => {
     const escolhidas = trns.filter(t => selecionados.has(t.fitid));
     if (!escolhidas.length) return toast.error('Selecione ao menos uma transação');
     setLoading(true);
     try {
       const payload = escolhidas.map(t => ({
-        descricao       : t.memo,
-        tipo            : t.tipo,
-        valor           : t.amount,
-        data_competencia: t.date,
-        status          : 'PAGO',
-        conta_id        : contaId || null,
-        ofx_fitid       : t.fitid,
-        ofx_memo        : t.memo,
+        descricao         : t.memo,
+        tipo              : t.tipo,
+        valor             : t.amount,
+        data_competencia  : t.date,
+        status            : 'PAGO',
+        conta_id          : contaId          || null,
+        conta_bancaria_id : contaBancariaId  || null,
+        ofx_fitid         : t.fitid,
+        ofx_memo          : t.memo,
       }));
       const res = await api.financeiro.importar(payload);
       toast.success(`${res.importados} lançamento(s) importado(s)!`);
@@ -102,9 +141,28 @@ function ModalImportar({ open, onClose, onSave }) {
               </button>
             </div>
 
+            {/* Conta Bancária */}
+            <div>
+              <label className="label">Conta Bancária</label>
+              {contaMatchInfo?.matched && (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-1.5 mb-2">
+                  <CheckCircle2 size={12} /> Reconhecida automaticamente: <strong>{contaMatchInfo.nome}</strong>
+                </div>
+              )}
+              {contaMatchInfo && !contaMatchInfo.matched && (
+                <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5 mb-2">
+                  Conta não reconhecida — selecione abaixo para vincular automaticamente nas próximas importações
+                </div>
+              )}
+              <select className="input" value={contaBancariaId} onChange={e => handleContaBancariaChange(e.target.value)}>
+                <option value="">Nenhuma</option>
+                {contasBancarias.map(c => <option key={c.id} value={c.id}>{c.nome}{c.banco ? ` — ${c.banco}` : ''}</option>)}
+              </select>
+            </div>
+
             {/* Conta contábil global */}
             <div>
-              <label className="label">Conta Contábil (opcional — aplicada a todas)</label>
+              <label className="label">Conta Contábil (opcional)</label>
               <select className="input" value={contaId} onChange={e => setContaId(e.target.value)}>
                 <option value="">Nenhuma</option>
                 {planoContas.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}

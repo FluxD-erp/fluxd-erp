@@ -20,10 +20,11 @@ import ProgramacaoSemana from './pages/ProgramacaoSemana';
 import Relatorios       from './pages/Relatorios';
 
 // Páginas de cadastro (FINANCEIRO ou ADMIN)
-import Clientes    from './pages/Clientes';
-import Fornecedores from './pages/Fornecedores';
-import PlanoContas from './pages/PlanoContas';
-import Passivos    from './pages/Passivos';
+import Clientes         from './pages/Clientes';
+import Fornecedores     from './pages/Fornecedores';
+import PlanoContas      from './pages/PlanoContas';
+import Passivos         from './pages/Passivos';
+import ContasBancarias  from './pages/ContasBancarias';
 
 // Configurações (todas as seções admin inclusas)
 import Configuracoes from './pages/Configuracoes';
@@ -93,10 +94,11 @@ export default function App() {
                     <Route path="/relatorios"         element={<Relatorios />} />
 
                     {/* FINANCEIRO ou ADMIN */}
-                    <Route path="/clientes"    element={<ProtectedRoute requiredRole="FINANCEIRO"><Clientes /></ProtectedRoute>} />
-                    <Route path="/fornecedores"element={<ProtectedRoute requiredRole="FINANCEIRO"><Fornecedores /></ProtectedRoute>} />
-                    <Route path="/plano-contas"element={<ProtectedRoute requiredRole="FINANCEIRO"><PlanoContas /></ProtectedRoute>} />
-                    <Route path="/passivos"    element={<ProtectedRoute requiredRole="FINANCEIRO"><Passivos /></ProtectedRoute>} />
+                    <Route path="/clientes"         element={<ProtectedRoute requiredRole="FINANCEIRO"><Clientes /></ProtectedRoute>} />
+                    <Route path="/fornecedores"     element={<ProtectedRoute requiredRole="FINANCEIRO"><Fornecedores /></ProtectedRoute>} />
+                    <Route path="/plano-contas"     element={<ProtectedRoute requiredRole="FINANCEIRO"><PlanoContas /></ProtectedRoute>} />
+                    <Route path="/passivos"         element={<ProtectedRoute requiredRole="FINANCEIRO"><Passivos /></ProtectedRoute>} />
+                    <Route path="/contas-bancarias" element={<ProtectedRoute requiredRole="FINANCEIRO"><ContasBancarias /></ProtectedRoute>} />
 
                     {/* Planos e Billing */}
                     <Route path="/planos"         element={<Planos />} />
