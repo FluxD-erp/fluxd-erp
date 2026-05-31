@@ -1,69 +1,164 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { Plus, Search, Upload, CheckCircle2, X, Pencil, Trash2, BanknoteIcon } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Plus, Search, Upload, Download, AlertCircle, CheckCircle2, X, Pencil, Trash2 } from 'lucide-react';
+import Papa from 'papaparse';
 import toast from 'react-hot-toast';
 import { api, fmt, fmtData } from '../services/api';
-import { parseOfx } from '../lib/ofxParser';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 
-// ── Modal de Importação OFX ──────────────────────────────────────
+// ── CSV template para download ───────────────────────────────────
+const CSV_HEADER = 'descricao,tipo,valor,data_competencia,status,observacao';
+const CSV_EXEMPLO = `Venda de serviços,RECEITA,1500.00,2025-04-01,PAGO,
+Aluguel escritório,DESPESA,2200.00,2025-04-05,PENDENTE,Vencimento dia 5
+Assinatura software,DESPESA,99.90,2025-04-10,PENDENTE,`;
+
+function downloadTemplate() {
+  const blob = new Blob([CSV_HEADER + '\n' + CSV_EXEMPLO], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'modelo_lancamentos.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Normaliza string para comparação: maiúsculas, sem acentos, sem pontuação extra
+function normalizar(s) {
+  return (s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+// Retorna o match exato ou parcial de uma entidade pelo nome
+function matchEntidade(nome, lista) {
+  const n = normalizar(nome);
+  const exato = lista.find(e => normalizar(e.nome) === n);
+  if (exato) return { entidade: exato, tipo: 'match' };
+  const parcial = lista.find(e => normalizar(e.nome).includes(n) || n.includes(normalizar(e.nome)));
+  if (parcial) return { entidade: parcial, tipo: 'parcial' };
+  return { entidade: null, tipo: 'novo' };
+}
+
+// ── Modal de Importação ──────────────────────────────────────────
 function ModalImportar({ open, onClose, onSave }) {
-  const [trns, setTrns]         = useState([]);
-  const [ofxInfo, setOfxInfo]   = useState(null);
-  const [selecionados, setSel]  = useState(new Set());
-  const [planoContas, setPlano] = useState([]);
-  const [contaId, setContaId]   = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [rows, setRows]             = useState([]);
+  const [erros, setErros]           = useState([]);
+  const [loading, setLoading]       = useState(false);
+  const [loadingMatch, setLoadingMatch] = useState(false);
+  const [fornecedores, setFornecedores] = useState([]);
+  const [clientes, setClientes]     = useState([]);
   const inputRef = useRef();
 
-  const reset = () => { setTrns([]); setOfxInfo(null); setSel(new Set()); setContaId(''); };
+  const reset = () => { setRows([]); setErros([]); };
 
+  // Carrega fornecedores e clientes ao abrir
   useEffect(() => {
     if (!open) return;
-    api.financeiro.planoContas().then(p => setPlano(p || [])).catch(() => {});
+    Promise.all([
+      api.fornecedores.listar({ limit: 500 }),
+      api.clientes.listar({ limit: 500 }),
+    ]).then(([f, c]) => {
+      setFornecedores(f || []);
+      setClientes(c || []);
+    }).catch(() => {});
   }, [open]);
 
-  const handleFile = useCallback(async (file) => {
+  const handleFile = (file) => {
     if (!file) return;
-    if (!file.name.match(/\.(ofx|qfx|ofc)$/i))
-      return toast.error('Arquivo deve ser .ofx ou .qfx');
-    try {
-      const result = await parseOfx(file);
-      if (!result.transactions.length)
-        return toast.error('Nenhuma transação encontrada no arquivo');
-      setOfxInfo(result);
-      setTrns(result.transactions);
-      setSel(new Set(result.transactions.map(t => t.fitid)));
-    } catch (e) {
-      toast.error('Erro ao ler OFX: ' + e.message);
-    }
-  }, []);
+    if (!file.name.match(/\.(csv|txt)$/i))
+      return toast.error('Arquivo deve ser .csv ou .txt');
 
-  const toggleAll = () => {
-    setSel(s => s.size === trns.length ? new Set() : new Set(trns.map(t => t.fitid)));
-  };
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: h => h.trim().toLowerCase().replace(/\s+/g, '_'),
+      complete: ({ data }) => {
+        const errosLocais = [];
+        const TIPOS  = ['RECEITA','DESPESA','TRANSFERENCIA'];
+        const STATUS = ['PENDENTE','PAGO','CANCELADO'];
 
-  const toggle = (fitid) => {
-    setSel(s => { const n = new Set(s); n.has(fitid) ? n.delete(fitid) : n.add(fitid); return n; });
+        const parsed = data.map((r, i) => {
+          const linha  = i + 2;
+          const tipo   = (r.tipo   || '').toUpperCase().trim();
+          const status = (r.status || 'PENDENTE').toUpperCase().trim();
+          const valor  = parseFloat((r.valor || '').toString().replace(',', '.'));
+          const data_c = (r.data_competencia || r.data || '').trim();
+
+          if (!r.descricao?.trim())                        errosLocais.push({ linha, msg: 'descricao obrigatória' });
+          else if (!TIPOS.includes(tipo))                  errosLocais.push({ linha, msg: `tipo "${tipo}" inválido` });
+          else if (!/^\d{4}-\d{2}-\d{2}$/.test(data_c))  errosLocais.push({ linha, msg: `data "${data_c}" inválida (use AAAA-MM-DD)` });
+          else if (isNaN(valor) || valor <= 0)             errosLocais.push({ linha, msg: `valor "${r.valor}" inválido` });
+
+          // Match de entidade: DESPESA → fornecedor, RECEITA → cliente
+          const lista  = tipo === 'DESPESA' ? fornecedores : clientes;
+          const { entidade, tipo: matchTipo } = matchEntidade(r.descricao?.trim() || '', lista);
+
+          return {
+            descricao        : r.descricao?.trim() || '',
+            tipo,
+            valor,
+            data_competencia : data_c,
+            status           : STATUS.includes(status) ? status : 'PENDENTE',
+            observacao       : r.observacao?.trim() || '',
+            _ok              : errosLocais.filter(e => e.linha === linha).length === 0,
+            _entidade        : entidade,   // objeto encontrado ou null
+            _matchTipo       : matchTipo,  // 'match' | 'parcial' | 'novo'
+          };
+        });
+
+        setRows(parsed);
+        setErros(errosLocais);
+      },
+    });
   };
 
   const handleImportar = async () => {
-    const escolhidas = trns.filter(t => selecionados.has(t.fitid));
-    if (!escolhidas.length) return toast.error('Selecione ao menos uma transação');
+    if (erros.length > 0) return toast.error('Corrija os erros antes de importar');
+    const validas = rows.filter(r => r._ok);
+    if (!validas.length) return toast.error('Nenhuma linha válida');
     setLoading(true);
     try {
-      const payload = escolhidas.map(t => ({
-        descricao       : t.memo,
-        tipo            : t.tipo,
-        valor           : t.amount,
-        data_competencia: t.date,
-        status          : 'PAGO',
-        conta_id        : contaId || null,
-        ofx_fitid       : t.fitid,
-        ofx_memo        : t.memo,
-      }));
+      // 1. Cria fornecedores/clientes novos (deduplicado por nome)
+      const novosNomes = [...new Set(
+        validas
+          .filter(r => r._matchTipo === 'novo')
+          .map(r => r.descricao)
+      )];
+
+      const criados = {};
+      for (const nome of novosNomes) {
+        // Descobre se é fornecedor ou cliente pela primeira linha com esse nome
+        const primeiraLinha = validas.find(r => r.descricao === nome);
+        try {
+          if (primeiraLinha.tipo === 'DESPESA') {
+            const f = await api.fornecedores.criar({ nome, ativo: true });
+            criados[nome] = { id: f.id, tipo: 'fornecedor' };
+          } else {
+            const c = await api.clientes.criar({ nome, ativo: true });
+            criados[nome] = { id: c.id, tipo: 'cliente' };
+          }
+        } catch { /* ignora se já existe */ }
+      }
+
+      // 2. Monta payload com IDs vinculados
+      const payload = validas.map(({ _ok, _entidade, _matchTipo, ...r }) => {
+        let fornecedor_id = null;
+        let cliente_id    = null;
+
+        if (_matchTipo === 'novo' && criados[r.descricao]) {
+          const c = criados[r.descricao];
+          if (c.tipo === 'fornecedor') fornecedor_id = c.id;
+          else                         cliente_id    = c.id;
+        } else if (_entidade) {
+          if (r.tipo === 'DESPESA') fornecedor_id = _entidade.id;
+          else                      cliente_id    = _entidade.id;
+        }
+
+        return { ...r, fornecedor_id, cliente_id };
+      });
+
       const res = await api.financeiro.importar(payload);
-      toast.success(`${res.importados} lançamento(s) importado(s)!`);
+      const novosCount = Object.keys(criados).length;
+      toast.success(
+        `${res.importados} lançamentos importados!` +
+        (novosCount > 0 ? ` ${novosCount} ${novosCount === 1 ? 'entidade criada' : 'entidades criadas'}.` : '')
+      );
       reset(); onSave();
     } catch (e) {
       toast.error(e.message);
@@ -72,105 +167,129 @@ function ModalImportar({ open, onClose, onSave }) {
 
   const handleClose = () => { reset(); onClose(); };
 
+  const linhasOk    = rows.filter(r => r._ok).length;
+  const linhasErro  = rows.filter(r => !r._ok).length;
+  const novosNomesUnicos = [...new Set(rows.filter(r => r._ok && r._matchTipo === 'novo').map(r => r.descricao))];
+  const novosCount  = novosNomesUnicos.length;
+  const matchCount  = rows.filter(r => r._ok && (r._matchTipo === 'match' || r._matchTipo === 'parcial')).length;
+
   return (
-    <Modal open={open} onClose={handleClose} title="Importar Extrato OFX" size="lg">
+    <Modal open={open} onClose={handleClose} title="Importar Lançamentos via CSV" size="lg">
       <div className="space-y-4">
-        {trns.length === 0 ? (
+        {/* Instruções */}
+        <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-xl text-sm text-blue-800">
+          <AlertCircle size={16} className="shrink-0 mt-0.5" />
+          <div>
+            Colunas obrigatórias: <strong>descricao, tipo, valor, data_competencia</strong>
+            {' '}(AAAA-MM-DD). Opcionais: status, observacao.
+            <button onClick={downloadTemplate} className="ml-2 underline font-medium flex items-center gap-1 inline-flex">
+              <Download size={12} /> Baixar modelo
+            </button>
+          </div>
+        </div>
+
+        {/* Upload */}
+        {rows.length === 0 ? (
           <div
             className="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center cursor-pointer hover:border-unicri-orange/40 transition-colors"
             onClick={() => inputRef.current?.click()}
             onDragOver={e => e.preventDefault()}
             onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
           >
-            <BanknoteIcon size={32} className="mx-auto text-gray-200 mb-3" />
-            <p className="text-gray-500 text-sm">Arraste o arquivo OFX do seu banco</p>
-            <p className="text-gray-400 text-xs mt-1">ou <span className="text-unicri-orange">clique para selecionar</span> — .ofx, .qfx</p>
-            <p className="text-xs text-gray-300 mt-3">Compatível com Itaú, Bradesco, BB, Santander, Nubank…</p>
-            <input ref={inputRef} type="file" accept=".ofx,.qfx,.ofc" className="hidden"
+            <Upload size={28} className="mx-auto text-gray-300 mb-3" />
+            <p className="text-gray-500 text-sm">Arraste um arquivo CSV ou <span className="text-unicri-orange font-medium">clique para selecionar</span></p>
+            <input ref={inputRef} type="file" accept=".csv,.txt" className="hidden"
               onChange={e => handleFile(e.target.files[0])} />
           </div>
         ) : (
           <>
-            {/* Info do extrato */}
-            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 bg-gray-50 rounded-xl px-4 py-2.5">
-              <BanknoteIcon size={13} className="text-unicri-orange" />
-              {ofxInfo?.bankId && <span>Banco <strong>{ofxInfo.bankId}</strong></span>}
-              {ofxInfo?.dtStart && <span>Período: {fmtData(ofxInfo.dtStart)} → {fmtData(ofxInfo.dtEnd)}</span>}
-              <span>{trns.length} transações</span>
-              <button onClick={reset} className="ml-auto flex items-center gap-1 text-gray-400 hover:text-gray-600">
-                <X size={11} /> Trocar arquivo
+            {/* Resumo */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex gap-3 text-sm flex-wrap">
+                <span className="flex items-center gap-1 text-emerald-600">
+                  <CheckCircle2 size={14} /> {linhasOk} válidas
+                </span>
+                {linhasErro > 0 && (
+                  <span className="flex items-center gap-1 text-red-500">
+                    <AlertCircle size={14} /> {linhasErro} com erro
+                  </span>
+                )}
+                {matchCount > 0 && (
+                  <span className="flex items-center gap-1 text-emerald-600 text-xs">
+                    ✓ {matchCount} entidade{matchCount > 1 ? 's' : ''} encontrada{matchCount > 1 ? 's' : ''}
+                  </span>
+                )}
+                {novosCount > 0 && (
+                  <span className="flex items-center gap-1 text-orange-500 text-xs">
+                    + {novosCount} nova{novosCount > 1 ? 's' : ''} entidade{novosCount > 1 ? 's' : ''} serão cadastradas
+                  </span>
+                )}
+              </div>
+              <button onClick={reset} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                <X size={12} /> Trocar arquivo
               </button>
             </div>
 
-            {/* Conta contábil global */}
-            <div>
-              <label className="label">Conta Contábil (opcional — aplicada a todas)</label>
-              <select className="input" value={contaId} onChange={e => setContaId(e.target.value)}>
-                <option value="">Nenhuma</option>
-                {planoContas.map(c => <option key={c.id} value={c.id}>{c.codigo} — {c.nome}</option>)}
-              </select>
-            </div>
+            {/* Erros */}
+            {erros.length > 0 && (
+              <div className="bg-red-50 rounded-xl p-3 text-xs text-red-700 space-y-1 max-h-28 overflow-y-auto">
+                {erros.map((e, i) => <div key={i}>Linha {e.linha}: {e.msg}</div>)}
+              </div>
+            )}
 
-            {/* Tabela de transações */}
-            <div className="overflow-x-auto max-h-72 border border-gray-100 rounded-xl">
+            {/* Preview tabela */}
+            <div className="overflow-x-auto max-h-64 border border-gray-100 rounded-xl">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-gray-50">
                   <tr className="text-left text-gray-400 uppercase tracking-wide">
-                    <th className="px-3 py-2">
-                      <input type="checkbox"
-                        checked={selecionados.size === trns.length}
-                        onChange={toggleAll}
-                        className="rounded" />
-                    </th>
+                    <th className="px-3 py-2">#</th>
                     <th className="px-3 py-2">Descrição</th>
-                    <th className="px-3 py-2">Data</th>
                     <th className="px-3 py-2">Tipo</th>
-                    <th className="px-3 py-2 text-right">Valor</th>
+                    <th className="px-3 py-2">Valor</th>
+                    <th className="px-3 py-2">Data</th>
+                    <th className="px-3 py-2">Entidade</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {trns.map(t => (
-                    <tr key={t.fitid}
-                      className={`cursor-pointer hover:bg-gray-50 ${!selecionados.has(t.fitid) ? 'opacity-40' : ''}`}
-                      onClick={() => toggle(t.fitid)}>
+                  {rows.map((r, i) => (
+                    <tr key={i} className={r._ok ? '' : 'bg-red-50'}>
+                      <td className="px-3 py-1.5 text-gray-400">{i + 2}</td>
+                      <td className="px-3 py-1.5 font-medium text-gray-700 max-w-[160px] truncate">{r.descricao || <span className="text-red-400">—</span>}</td>
                       <td className="px-3 py-1.5">
-                        <input type="checkbox" checked={selecionados.has(t.fitid)}
-                          onChange={() => toggle(t.fitid)}
-                          onClick={e => e.stopPropagation()}
-                          className="rounded" />
+                        <span className={r.tipo === 'RECEITA' ? 'text-emerald-600' : r.tipo === 'DESPESA' ? 'text-red-500' : 'text-gray-500'}>{r.tipo || '?'}</span>
                       </td>
-                      <td className="px-3 py-1.5 font-medium text-gray-700 max-w-[200px] truncate">{t.memo}</td>
-                      <td className="px-3 py-1.5 text-gray-500 whitespace-nowrap">{fmtData(t.date)}</td>
+                      <td className="px-3 py-1.5">{isNaN(r.valor) ? <span className="text-red-400">?</span> : fmt(r.valor)}</td>
+                      <td className="px-3 py-1.5 text-gray-500">{r.data_competencia || <span className="text-red-400">?</span>}</td>
                       <td className="px-3 py-1.5">
-                        <span className={t.tipo === 'RECEITA' ? 'text-emerald-600' : 'text-red-500'}>
-                          {t.tipo === 'RECEITA' ? '+ Crédito' : '− Débito'}
-                        </span>
-                      </td>
-                      <td className={`px-3 py-1.5 text-right font-semibold ${t.tipo === 'RECEITA' ? 'text-emerald-600' : 'text-red-500'}`}>
-                        {fmt(t.amount)}
+                        {r._matchTipo === 'match' && (
+                          <span className="inline-flex items-center gap-1 text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded text-xs">
+                            ✓ {r._entidade?.nome}
+                          </span>
+                        )}
+                        {r._matchTipo === 'parcial' && (
+                          <span className="inline-flex items-center gap-1 text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded text-xs">
+                            ~ {r._entidade?.nome}
+                          </span>
+                        )}
+                        {r._matchTipo === 'novo' && r._ok && (
+                          <span className="inline-flex items-center gap-1 text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded text-xs">
+                            + novo
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-
-            <div className="flex items-center justify-between text-xs text-gray-400">
-              <span>{selecionados.size} de {trns.length} selecionadas</span>
-              {selecionados.size > 0 && (
-                <span className="flex items-center gap-1 text-emerald-600">
-                  <CheckCircle2 size={11} /> prontas para importar
-                </span>
-              )}
-            </div>
           </>
         )}
 
         <div className="flex justify-end gap-2 pt-1">
           <button className="btn-secondary" onClick={handleClose}>Cancelar</button>
-          {trns.length > 0 && (
-            <button className="btn-primary" onClick={handleImportar} disabled={loading || selecionados.size === 0}>
-              {loading ? 'Importando…' : `Importar ${selecionados.size} lançamento${selecionados.size !== 1 ? 's' : ''}`}
+          {rows.length > 0 && (
+            <button className="btn-primary" onClick={handleImportar} disabled={loading || erros.length > 0}>
+              {loading ? 'Importando…' : `Importar ${linhasOk} lançamentos${novosCount > 0 ? ` + ${novosCount} entidades` : ''}`}
             </button>
           )}
         </div>
@@ -341,7 +460,7 @@ export default function Lancamentos() {
         actions={
           <div className="flex gap-2">
             <button className="btn-secondary" onClick={() => setShowImport(true)}>
-              <Upload size={16} /> Importar OFX
+              <Upload size={16} /> Importar CSV
             </button>
             <button className="btn-primary" onClick={() => setShowForm(true)}>
               <Plus size={16} /> Novo Lançamento
