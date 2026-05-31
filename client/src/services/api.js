@@ -117,6 +117,14 @@ export const api = {
   },
 
   // Contas Bancárias
+  // Integração Banco Inter
+  inter: {
+    status       : (contaId)       => req(`/inter/status/${contaId}`),
+    salvarCredenciais: (contaId, data) => req(`/inter/credenciais/${contaId}`, { method: 'POST', body: data }),
+    extrato      : (contaId, dataInicio, dataFim) =>
+      req(`/inter/extrato/${contaId}?dataInicio=${dataInicio}&dataFim=${dataFim}`),
+  },
+
   contasBancarias: {
     listar  : ()          => req('/contas-bancarias'),
     saldos  : ()          => req('/contas-bancarias/saldos'),
