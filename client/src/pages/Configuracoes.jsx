@@ -564,7 +564,7 @@ function InviteForm({ onClose, onSaved }) {
     const res = await fetch(`${apiBase}/api/admin/invite-user`, { method: 'POST', headers, body: JSON.stringify(form) });
     const data = await res.json(); setBusy(false);
     if (!res.ok) toast.error(data.error);
-    else { toast.success(`Convite enviado para ${form.email}`); onSaved(); onClose(); }
+    else { toast.success(data.message || `Convite enviado para ${form.email}`); onSaved(); onClose(); }
   }
   return (
     <form onSubmit={submit} className="space-y-4">

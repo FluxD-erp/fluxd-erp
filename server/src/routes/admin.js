@@ -36,11 +36,13 @@ router.get('/users', async (req, res) => {
 });
 
 // ----------------------------------------------------------------
-// POST /api/admin/invite-user — cria usuário e envia e-mail de convite
+// POST /api/admin/invite-user — convida novo usuário OU vincula existente
 // Body: { email, nome, perfil }
+// Header: X-Empresa-ID (usado para vincular à empresa ativa)
 // ----------------------------------------------------------------
 router.post('/invite-user', async (req, res) => {
   const { email, nome, perfil = 'VISUALIZACAO' } = req.body;
+  const empresaId = req.headers['x-empresa-id'];
 
   if (!email || !nome) {
     return res.status(400).json({ error: 'email e nome são obrigatórios.' });
@@ -48,34 +50,60 @@ router.post('/invite-user', async (req, res) => {
 
   const appUrl = process.env.APP_URL || 'http://localhost:5173';
 
-  // Cria o usuário no Supabase Auth (envia e-mail de convite)
+  let userId;
+  let jaExistia = false;
+
+  // Tenta criar via convite (novo usuário)
   const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-    data       : { nome, perfil }, // raw_user_meta_data → lido pelo trigger handle_new_user()
+    data       : { nome, perfil },
     redirectTo : `${appUrl}/definir-senha`,
   });
 
   if (error) {
-    // Se o usuário já existe, apenas atualiza o profile
-    if (error.message.includes('already been registered')) {
-      return res.status(409).json({ error: 'E-mail já cadastrado no sistema.' });
+    if (!error.message.includes('already been registered')) {
+      return res.status(500).json({ error: error.message });
     }
-    return res.status(500).json({ error: error.message });
+
+    // Usuário já existe — busca o ID pelo e-mail
+    jaExistia = true;
+    const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+    if (listErr) return res.status(500).json({ error: listErr.message });
+
+    const existente = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    if (!existente) return res.status(500).json({ error: 'Usuário não encontrado após busca.' });
+    userId = existente.id;
+  } else {
+    userId = data.user.id;
   }
 
   // Garante que o profile existe com o perfil correto
-  // (o trigger handle_new_user faz isso automaticamente, mas garantimos aqui)
   await supabaseAdmin.from('profiles').upsert({
-    id    : data.user.id,
+    id    : userId,
     nome,
     email,
     perfil,
     ativo : true,
   }, { onConflict: 'id' });
 
+  // Vincula à empresa ativa (se informada)
+  if (empresaId) {
+    const { error: ueErr } = await supabaseAdmin.from('usuarios_empresas').upsert({
+      user_id    : userId,
+      empresa_id : empresaId,
+      perfil,
+      ativo      : true,
+    }, { onConflict: 'user_id,empresa_id', ignoreDuplicates: false });
+
+    if (ueErr) return res.status(500).json({ error: ueErr.message });
+  }
+
   res.status(201).json({
-    success : true,
-    userId  : data.user.id,
-    message : `Convite enviado para ${email}`,
+    success  : true,
+    userId,
+    jaExistia,
+    message  : jaExistia
+      ? `${email} já estava cadastrado e foi vinculado à empresa com sucesso!`
+      : `Convite enviado para ${email}`,
   });
 });
 
