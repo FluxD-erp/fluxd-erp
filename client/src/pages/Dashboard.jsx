@@ -6,8 +6,9 @@ import {
 import {
   TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Clock, CheckCircle, ArrowUpRight, ArrowDownRight, Wallet, Target, Pencil,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, BanknoteIcon, Plus,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { api, fmt, fmtData, fmtMes } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { BRAND, CHART_COLORS } from '../theme';
@@ -154,15 +155,95 @@ function MetaMensal({ empresaId, receitaMes }) {
   );
 }
 
+// ── Cards de Contas Bancárias ─────────────────────────────────────
+const TIPO_COR = {
+  CORRENTE    : 'bg-blue-50 text-blue-600',
+  POUPANCA    : 'bg-emerald-50 text-emerald-600',
+  CAIXA       : 'bg-amber-50 text-amber-600',
+  INVESTIMENTO: 'bg-purple-50 text-purple-600',
+};
+
+function ContasBancariasCards({ contas }) {
+  const navigate = useNavigate();
+
+  if (contas.length === 0) {
+    return (
+      <div
+        onClick={() => navigate('/contas-bancarias')}
+        className="flex items-center gap-3 card px-5 py-4 border-2 border-dashed border-gray-200 cursor-pointer hover:border-unicri-orange/40 transition-colors"
+      >
+        <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+          <Plus size={18} className="text-gray-400" />
+        </div>
+        <div>
+          <div className="text-sm font-medium text-gray-500">Cadastrar contas bancárias</div>
+          <div className="text-xs text-gray-400">Vincule seus extratos OFX e acompanhe saldos em tempo real</div>
+        </div>
+      </div>
+    );
+  }
+
+  const totalGeral = contas.reduce((s, c) => s + c.saldo_atual, 0);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+          <BanknoteIcon size={15} className="text-unicri-orange" /> Contas Bancárias
+        </h2>
+        <button onClick={() => navigate('/contas-bancarias')}
+          className="text-xs text-unicri-orange hover:underline">Gerenciar</button>
+      </div>
+      <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+        {contas.map(conta => (
+          <div key={conta.id}
+            className="card p-4 min-w-[200px] max-w-[220px] shrink-0 flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-unicri-orange/10 flex items-center justify-center shrink-0">
+                <BanknoteIcon size={17} className="text-unicri-orange" />
+              </div>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${TIPO_COR[conta.tipo] || 'bg-gray-100 text-gray-500'}`}>
+                {conta.tipo === 'POUPANCA' ? 'Poupança' : conta.tipo === 'CORRENTE' ? 'Corrente' : conta.tipo === 'CAIXA' ? 'Caixa' : 'Invest.'}
+              </span>
+            </div>
+            <div>
+              <div className="font-semibold text-gray-800 text-sm truncate">{conta.nome}</div>
+              {conta.banco && <div className="text-xs text-gray-400 truncate">{conta.banco}</div>}
+            </div>
+            <div className={`text-lg font-bold mt-auto ${conta.saldo_atual >= 0 ? 'text-gray-900' : 'text-red-500'}`}>
+              {fmt(conta.saldo_atual)}
+            </div>
+          </div>
+        ))}
+
+        {/* Card de total */}
+        <div className="card p-4 min-w-[200px] max-w-[220px] shrink-0 flex flex-col gap-2 bg-unicri-navy border-0">
+          <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">
+            <Wallet size={17} className="text-white" />
+          </div>
+          <div>
+            <div className="text-xs text-white/60 font-medium">Total consolidado</div>
+            <div className="text-xs text-white/40">{contas.length} conta{contas.length !== 1 ? 's' : ''}</div>
+          </div>
+          <div className={`text-lg font-bold mt-auto ${totalGeral >= 0 ? 'text-white' : 'text-red-300'}`}>
+            {fmt(totalGeral)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Dashboard ────────────────────────────────────────────────────
 export default function Dashboard() {
   const { empresaAtiva } = useAuth();
-  const [mesSel, setMesSel]   = useState(() => new Date().toISOString().slice(0, 7));
-  const [kpis, setKpis]       = useState(null);
-  const [fluxo, setFluxo]     = useState([]);
-  const [despesas, setDespesas] = useState([]);
-  const [ultimos, setUltimos] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [mesSel, setMesSel]         = useState(() => new Date().toISOString().slice(0, 7));
+  const [kpis, setKpis]             = useState(null);
+  const [fluxo, setFluxo]           = useState([]);
+  const [despesas, setDespesas]     = useState([]);
+  const [ultimos, setUltimos]       = useState([]);
+  const [contasBanc, setContasBanc] = useState([]);
+  const [loading, setLoading]       = useState(true);
 
   useEffect(() => {
     setLoading(true);
@@ -171,11 +252,13 @@ export default function Dashboard() {
       api.dashboard.fluxoMensal(),
       api.dashboard.distribuicaoDespesas(mesSel),
       api.dashboard.ultimosLancamentos(),
-    ]).then(([k, f, d, u]) => {
+      api.contasBancarias.saldos().catch(() => []),
+    ]).then(([k, f, d, u, b]) => {
       setKpis(k);
       setFluxo(f.map(m => ({ ...m, mes: fmtMes(m.mes) })));
       setDespesas(d);
       setUltimos(u);
+      setContasBanc(b || []);
     }).catch(console.error).finally(() => setLoading(false));
   }, [mesSel]);
 
@@ -284,6 +367,9 @@ export default function Dashboard() {
           color="yellow"
         />
       </div>
+
+      {/* Contas Bancárias */}
+      <ContasBancariasCards contas={contasBanc} />
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

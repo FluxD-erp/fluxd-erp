@@ -22,6 +22,31 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/contas-bancarias/saldos
+// Retorna cada conta com saldo_atual calculado (saldo_inicial ± lançamentos PAGO)
+router.get('/saldos', async (req, res) => {
+  try {
+    const [{ data: contas, error: e1 }, { data: movs, error: e2 }] = await Promise.all([
+      db.from('contas_bancarias').select('*').eq('empresa_id', req.empresaId).eq('ativo', true).order('nome'),
+      db.from('lancamentos').select('conta_bancaria_id, tipo, valor')
+        .eq('empresa_id', req.empresaId).eq('status', 'PAGO').not('conta_bancaria_id', 'is', null),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+
+    const resultado = (contas || []).map(conta => {
+      const lancamentos = (movs || []).filter(m => m.conta_bancaria_id === conta.id);
+      const entradas = lancamentos.filter(m => m.tipo === 'RECEITA').reduce((s, m) => s + Number(m.valor), 0);
+      const saidas   = lancamentos.filter(m => m.tipo === 'DESPESA').reduce((s, m) => s + Number(m.valor), 0);
+      return { ...conta, saldo_atual: Number(conta.saldo_inicial) + entradas - saidas };
+    });
+
+    res.json(resultado);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/contas-bancarias/match?bank_id=xxx&acct_id=yyy
 // Retorna a conta bancária que corresponde ao arquivo OFX
 router.get('/match', async (req, res) => {

@@ -119,6 +119,7 @@ export const api = {
   // Contas Bancárias
   contasBancarias: {
     listar  : ()          => req('/contas-bancarias'),
+    saldos  : ()          => req('/contas-bancarias/saldos'),
     match   : (bankId, acctId) => req(`/contas-bancarias/match?bank_id=${encodeURIComponent(bankId || '')}&acct_id=${encodeURIComponent(acctId || '')}`),
     criar   : (data)      => req('/contas-bancarias', { method: 'POST', body: data }),
     atualizar: (id, data) => req(`/contas-bancarias/${id}`, { method: 'PATCH', body: data }),
