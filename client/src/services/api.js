@@ -130,6 +130,13 @@ export const api = {
     antecipacoes: ()              => req('/recebiveis-cartao/antecipacoes'),
   },
 
+  // Google Calendar
+  googleAuth: {
+    status    : ()  => req('/auth/google/status'),
+    connect   : ()  => req('/auth/google/connect'),
+    disconnect: ()  => req('/auth/google/disconnect', { method: 'DELETE' }),
+  },
+
   // Integração Banco Inter
   inter: {
     status       : (contaId)       => req(`/inter/status/${contaId}`),

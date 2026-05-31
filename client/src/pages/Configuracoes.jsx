@@ -845,31 +845,95 @@ function SecaoPlano() {
 // SEÇÃO: Integrações
 // ═══════════════════════════════════════════════════════════════
 function SecaoIntegracoes() {
-  const integracoes = [
-    { nome: 'API REST',        desc: 'Integre com qualquer sistema via API',      icon: Zap,     status: 'disponível' },
-    { nome: 'Webhooks',        desc: 'Receba eventos em tempo real no seu sistema', icon: Globe,  status: 'breve' },
-    { nome: 'Banco do Brasil', desc: 'Conciliação bancária automática',            icon: Building2, status: 'breve' },
-    { nome: 'Nota Fiscal',     desc: 'Emissão e importação de NF-e / NFS-e',      icon: Package, status: 'breve' },
-    { nome: 'WhatsApp',        desc: 'Alertas de vencimento via WhatsApp',         icon: Smartphone, status: 'breve' },
-    { nome: 'E-mail SMTP',     desc: 'Envio de relatórios por e-mail próprio',     icon: Mail,   status: 'breve' },
+  const [gcal, setGcal] = useState(null); // null=carregando, {connected}
+  const searchParams    = new URLSearchParams(window.location.search);
+  const gcalParam       = searchParams.get('gcal');
+
+  useEffect(() => {
+    api.googleAuth.status()
+      .then(setGcal)
+      .catch(() => setGcal({ connected: false }));
+  }, []);
+
+  useEffect(() => {
+    if (gcalParam === 'success') toast.success('Google Agenda conectado com sucesso!');
+    if (gcalParam === 'error')   toast.error('Erro ao conectar Google Agenda. Tente novamente.');
+  }, [gcalParam]);
+
+  const handleConnect = async () => {
+    try {
+      const { url } = await api.googleAuth.connect();
+      window.location.href = url;
+    } catch { toast.error('Erro ao iniciar conexão com Google.'); }
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm('Desconectar Google Agenda? Os eventos já criados não serão removidos.')) return;
+    try {
+      await api.googleAuth.disconnect();
+      setGcal({ connected: false });
+      toast.success('Google Agenda desconectado.');
+    } catch { toast.error('Erro ao desconectar.'); }
+  };
+
+  const outros = [
+    { nome: 'Webhooks',        desc: 'Receba eventos em tempo real no seu sistema', icon: Globe,      status: 'breve' },
+    { nome: 'Banco do Brasil', desc: 'Conciliação bancária automática',             icon: Building2,  status: 'breve' },
+    { nome: 'Nota Fiscal',     desc: 'Emissão e importação de NF-e / NFS-e',       icon: Package,    status: 'breve' },
+    { nome: 'WhatsApp',        desc: 'Alertas de vencimento via WhatsApp',          icon: Smartphone, status: 'breve' },
+    { nome: 'E-mail SMTP',     desc: 'Envio de relatórios por e-mail próprio',      icon: Mail,       status: 'breve' },
   ];
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {integracoes.map(item => (
-        <div key={item.nome} className="card p-4 flex items-center gap-3">
-          <div className="w-10 h-10 bg-unicri-cream rounded-xl flex items-center justify-center shrink-0">
-            <item.icon size={18} className="text-unicri-orange" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-gray-800 text-sm">{item.nome}</div>
-            <div className="text-xs text-gray-400 truncate">{item.desc}</div>
-          </div>
-          {item.status === 'disponível'
-            ? <button className="btn-primary text-xs py-1 px-3">Configurar</button>
-            : <span className="text-xs font-semibold px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full whitespace-nowrap">Em breve</span>
-          }
+    <div className="space-y-4">
+      {/* Google Agenda */}
+      <div className="card p-4 flex items-center gap-3">
+        <div className="w-10 h-10 bg-unicri-cream rounded-xl flex items-center justify-center shrink-0">
+          <Globe size={18} className="text-unicri-orange" />
         </div>
-      ))}
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-gray-800 text-sm">Google Agenda</div>
+          <div className="text-xs text-gray-400">
+            {gcal === null
+              ? 'Verificando…'
+              : gcal.connected
+              ? 'Contas a Pagar são criadas automaticamente na sua agenda'
+              : 'Crie eventos de vencimento automaticamente ao lançar contas a pagar'}
+          </div>
+        </div>
+        {gcal === null ? null : gcal.connected ? (
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600">
+              <Check size={12} /> Conectado
+            </span>
+            <button onClick={handleDisconnect} className="btn-secondary text-xs py-1 px-3">
+              Desconectar
+            </button>
+          </div>
+        ) : (
+          <button onClick={handleConnect} className="btn-primary text-xs py-1 px-3">
+            Conectar
+          </button>
+        )}
+      </div>
+
+      {/* Demais integrações */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {outros.map(item => (
+          <div key={item.nome} className="card p-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-unicri-cream rounded-xl flex items-center justify-center shrink-0">
+              <item.icon size={18} className="text-unicri-orange" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-gray-800 text-sm">{item.nome}</div>
+              <div className="text-xs text-gray-400 truncate">{item.desc}</div>
+            </div>
+            <span className="text-xs font-semibold px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full whitespace-nowrap">
+              Em breve
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ const router  = express.Router();
 const { db }  = require('../db/supabase');
 const { requireAuth }    = require('../middleware/auth');
 const { requireEmpresa } = require('../middleware/empresa');
+const gcal = require('../lib/googleCalendar');
 
 // Todas as rotas financeiras requerem auth + empresa selecionada
 router.use(requireAuth, requireEmpresa);
@@ -268,6 +269,8 @@ router.post('/contas-pagar', async (req, res) => {
       const parcelas = gerarParcelas(base, parseInt(num_parcelas), frequencia || 'MENSAL', req.empresaId);
       const { data, error } = await db.from('contas_pagar').insert(parcelas).select();
       if (error) throw error;
+      // Cria eventos no Google Calendar (não bloqueia resposta)
+      data.forEach(p => gcal.createEvent(req.empresaId, p.id, p).catch(() => {}));
       return res.status(201).json({ parcelas: data.length, grupo_id: data[0]?.grupo_id });
     }
 
@@ -283,6 +286,7 @@ router.post('/contas-pagar', async (req, res) => {
       .single();
 
     if (error) throw error;
+    gcal.createEvent(req.empresaId, data.id, data).catch(() => {});
     res.status(201).json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -314,6 +318,12 @@ router.patch('/contas-pagar/:id/pagar', async (req, res) => {
 
     if (error) throw error;
 
+    if (novoStatus === 'PAGA') {
+      gcal.deleteEvent(req.empresaId, req.params.id).catch(() => {});
+    } else {
+      gcal.updateEvent(req.empresaId, req.params.id, { ...conta, status: novoStatus }).catch(() => {});
+    }
+
     // ── Recorrente: gera próxima ocorrência ao quitar ────────
     if (novoStatus === 'PAGA' && conta.recorrente && conta.frequencia) {
       const proxVenc = proximaData(conta.data_vencimento, conta.frequencia);
@@ -344,17 +354,21 @@ router.put('/contas-pagar/:id', async (req, res) => {
     const { fornecedor_id, descricao, valor_original, data_emissao, data_vencimento,
       data_pagamento, valor_pago, status, numero_documento, conta_id, observacao } = req.body;
 
-    const { error } = await db.from('contas_pagar')
-      .update({
-        fornecedor_id, descricao, valor_original, data_emissao, data_vencimento,
-        data_pagamento : data_pagamento || null,
-        valor_pago     : valor_pago || 0,
-        status, numero_documento, conta_id: conta_id || null, observacao,
-        atualizado_em  : new Date().toISOString(),
-      })
-      .eq('id', req.params.id);
+    const updated = {
+      fornecedor_id, descricao, valor_original, data_emissao, data_vencimento,
+      data_pagamento : data_pagamento || null,
+      valor_pago     : valor_pago || 0,
+      status, numero_documento, conta_id: conta_id || null, observacao,
+      atualizado_em  : new Date().toISOString(),
+    };
+    const { error } = await db.from('contas_pagar').update(updated).eq('id', req.params.id);
 
     if (error) throw error;
+    if (status !== 'PAGA' && status !== 'CANCELADA') {
+      gcal.updateEvent(req.empresaId, req.params.id, { ...updated, id: req.params.id }).catch(() => {});
+    } else {
+      gcal.deleteEvent(req.empresaId, req.params.id).catch(() => {});
+    }
     res.json({ id: req.params.id, ...req.body });
   } catch (e) {
     res.status(500).json({ error: e.message });
