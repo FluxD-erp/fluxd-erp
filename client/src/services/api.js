@@ -117,6 +117,17 @@ export const api = {
   },
 
   // Contas Bancárias
+  // Recebíveis de Cartão
+  recebiveis: {
+    resumo      : ()              => req('/recebiveis-cartao/resumo'),
+    listar      : (params = {})   => req(`/recebiveis-cartao?${new URLSearchParams(params)}`),
+    importar    : (rows)          => req('/recebiveis-cartao/importar', { method: 'POST', body: { rows } }),
+    antecipar   : (data)          => req('/recebiveis-cartao/antecipar', { method: 'POST', body: data }),
+    receber     : (id)            => req(`/recebiveis-cartao/${id}/receber`, { method: 'PATCH' }),
+    cancelar    : (id)            => req(`/recebiveis-cartao/${id}`, { method: 'DELETE' }),
+    antecipacoes: ()              => req('/recebiveis-cartao/antecipacoes'),
+  },
+
   // Integração Banco Inter
   inter: {
     status       : (contaId)       => req(`/inter/status/${contaId}`),

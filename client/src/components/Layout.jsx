@@ -22,7 +22,8 @@ const NAV = [
       { label: 'Contas a Receber', icon: TrendingUp,    to: '/contas-receber' },
       { label: 'Fluxo de Caixa',   icon: BarChart2,     to: '/fluxo-caixa' },
       { label: 'Prog. da Semana',  icon: CalendarDays,  to: '/programacao-semana' },
-      { label: 'Conciliação',      icon: BanknoteIcon,  to: '/conciliacao' },
+      { label: 'Conciliação',       icon: BanknoteIcon,  to: '/conciliacao' },
+      { label: 'Recebíveis Cartão', icon: CreditCard,    to: '/recebiveis-cartao' },
     ],
   },
   {

@@ -53,6 +53,7 @@ app.use('/api/empresas',   require('./routes/empresas'));
 app.use('/api/billing',           require('./routes/billing'));
 app.use('/api/contas-bancarias',  require('./routes/contasBancarias'));
 app.use('/api/inter',             require('./routes/inter'));
+app.use('/api/recebiveis-cartao', require('./routes/recebiveis'));
 app.get('/api/health',            (req, res) => res.json({ status: 'ok' }));
 
 // Só faz listen quando executado diretamente (não em serverless)

@@ -27,9 +27,10 @@ import Passivos         from './pages/Passivos';
 import ContasBancarias  from './pages/ContasBancarias';
 
 // Configurações (todas as seções admin inclusas)
-import Configuracoes from './pages/Configuracoes';
-import Planos        from './pages/Planos';
-import Conciliacao   from './pages/Conciliacao';
+import Configuracoes    from './pages/Configuracoes';
+import Planos           from './pages/Planos';
+import Conciliacao      from './pages/Conciliacao';
+import ReceiveisCartao  from './pages/ReceiveisCartao';
 
 /**
  * Guard que redireciona para /setup se o usuário não tiver empresa ativa.
@@ -101,8 +102,9 @@ export default function App() {
                     <Route path="/contas-bancarias" element={<ProtectedRoute requiredRole="FINANCEIRO"><ContasBancarias /></ProtectedRoute>} />
 
                     {/* Planos e Billing */}
-                    <Route path="/planos"         element={<Planos />} />
-                    <Route path="/conciliacao"    element={<Conciliacao />} />
+                    <Route path="/planos"              element={<Planos />} />
+                    <Route path="/conciliacao"        element={<Conciliacao />} />
+                    <Route path="/recebiveis-cartao"  element={<ReceiveisCartao />} />
 
                     {/* Configurações (acesso geral; seções admin-only controladas internamente) */}
                     <Route path="/configuracoes"  element={<Configuracoes />} />
