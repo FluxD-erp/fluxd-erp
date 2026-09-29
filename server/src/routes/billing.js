@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { db }  = require('../db/supabase');
 const { requireAuth } = require('../middleware/auth');
+const { requireEmpresa } = require('../middleware/empresa');
 
 // Stripe só inicializa se a chave existir (dev sem chave não quebra)
 let stripe = null;
@@ -31,10 +32,13 @@ const PLANOS = {
 // POST /api/billing/create-checkout
 // Cria sessão de checkout Stripe para o plano pro
 // ----------------------------------------------------------------
-router.post('/create-checkout', requireAuth, async (req, res) => {
+router.post('/create-checkout', requireAuth, requireEmpresa, async (req, res) => {
   if (!stripe) return res.status(503).json({ error: 'Pagamentos não configurados neste ambiente.' });
 
-  const { plano = 'pro', empresa_id } = req.body;
+  const { plano = 'pro' } = req.body;
+  // empresaId validado pelo requireEmpresa contra o vínculo do usuário —
+  // nunca aceito direto do body.
+  const empresa_id = req.empresaId;
   const price = PLANOS[plano];
   if (!price) return res.status(400).json({ error: 'Plano inválido.' });
 
@@ -76,10 +80,10 @@ router.post('/create-checkout', requireAuth, async (req, res) => {
 // POST /api/billing/portal
 // Abre portal de gerenciamento de assinatura Stripe
 // ----------------------------------------------------------------
-router.post('/portal', requireAuth, async (req, res) => {
+router.post('/portal', requireAuth, requireEmpresa, async (req, res) => {
   if (!stripe) return res.status(503).json({ error: 'Pagamentos não configurados.' });
 
-  const { empresa_id } = req.body;
+  const empresa_id = req.empresaId;
   try {
     const { data: empresa } = await db.from('empresas')
       .select('stripe_customer_id').eq('id', empresa_id).single();

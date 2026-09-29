@@ -1,13 +1,13 @@
 -- Migration 08: Row Level Security (RLS) — isolamento multi-tenant
 -- Cole no SQL Editor do Supabase e execute.
--- Dependencias: tabela empresa_usuarios (empresa_id, user_id, perfil, ativo)
+-- Dependencias: tabela usuarios_empresas (empresa_id, user_id, perfil, ativo)
 
 -- Helper: IDs de empresa que o usuario autenticado tem acesso ativo
 CREATE OR REPLACE FUNCTION auth.empresas_do_usuario()
 RETURNS SETOF uuid
 LANGUAGE sql STABLE SECURITY DEFINER
 AS $$
-  SELECT empresa_id FROM empresa_usuarios
+  SELECT empresa_id FROM usuarios_empresas
   WHERE user_id = auth.uid() AND ativo = true;
 $$;
 
@@ -19,25 +19,25 @@ CREATE POLICY "empresas_select" ON empresas
 DROP POLICY IF EXISTS "empresas_update" ON empresas;
 CREATE POLICY "empresas_update" ON empresas
   FOR UPDATE USING (id IN (
-    SELECT empresa_id FROM empresa_usuarios
+    SELECT empresa_id FROM usuarios_empresas
     WHERE user_id = auth.uid() AND perfil = 'ADMIN' AND ativo = true
   ));
 
 -- EMPRESA_USUARIOS
-ALTER TABLE empresa_usuarios ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "eu_select" ON empresa_usuarios;
-CREATE POLICY "eu_select" ON empresa_usuarios
+ALTER TABLE usuarios_empresas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "eu_select" ON usuarios_empresas;
+CREATE POLICY "eu_select" ON usuarios_empresas
   FOR SELECT USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
-DROP POLICY IF EXISTS "eu_insert" ON empresa_usuarios;
-CREATE POLICY "eu_insert" ON empresa_usuarios
+DROP POLICY IF EXISTS "eu_insert" ON usuarios_empresas;
+CREATE POLICY "eu_insert" ON usuarios_empresas
   FOR INSERT WITH CHECK (empresa_id IN (
-    SELECT empresa_id FROM empresa_usuarios
+    SELECT empresa_id FROM usuarios_empresas
     WHERE user_id = auth.uid() AND perfil = 'ADMIN' AND ativo = true
   ));
-DROP POLICY IF EXISTS "eu_update" ON empresa_usuarios;
-CREATE POLICY "eu_update" ON empresa_usuarios
+DROP POLICY IF EXISTS "eu_update" ON usuarios_empresas;
+CREATE POLICY "eu_update" ON usuarios_empresas
   FOR UPDATE USING (empresa_id IN (
-    SELECT empresa_id FROM empresa_usuarios
+    SELECT empresa_id FROM usuarios_empresas
     WHERE user_id = auth.uid() AND perfil = 'ADMIN' AND ativo = true
   ));
 
@@ -124,7 +124,7 @@ CREATE POLICY "pc_select" ON plano_contas
 DROP POLICY IF EXISTS "pc_write" ON plano_contas;
 CREATE POLICY "pc_write" ON plano_contas
   FOR ALL USING (empresa_id IN (
-    SELECT empresa_id FROM empresa_usuarios
+    SELECT empresa_id FROM usuarios_empresas
     WHERE user_id = auth.uid() AND perfil = 'ADMIN' AND ativo = true
   ));
 

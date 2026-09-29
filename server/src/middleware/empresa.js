@@ -12,7 +12,10 @@
 const { db: supabaseAdmin } = require('../db/supabase');
 
 async function requireEmpresa(req, res, next) {
-  const empresaId = req.headers['x-empresa-id'];
+  // Header é a fonte canônica. O body é aceito como fallback para rotas que
+  // recebem empresa_id no payload (ex.: /billing/create-checkout) — a validação
+  // de vínculo abaixo é a mesma nos dois casos.
+  const empresaId = req.headers['x-empresa-id'] || req.body?.empresa_id;
 
   if (!empresaId) {
     return res.status(400).json({ error: 'Header X-Empresa-ID é obrigatório.' });

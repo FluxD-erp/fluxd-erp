@@ -87,6 +87,20 @@ router.post('/invite-user', async (req, res) => {
 
   // Vincula à empresa ativa (se informada)
   if (empresaId) {
+    // O caller precisa ter acesso à empresa que está sendo vinculada — um ADMIN
+    // global não deve poder convidar usuários para tenants que não administra.
+    const { data: ue } = await supabaseAdmin
+      .from('usuarios_empresas')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .eq('empresa_id', empresaId)
+      .eq('ativo', true)
+      .maybeSingle();
+
+    if (!ue) {
+      return res.status(403).json({ error: 'Acesso negado a esta empresa.' });
+    }
+
     const { error: ueErr } = await supabaseAdmin.from('usuarios_empresas').upsert({
       user_id    : userId,
       empresa_id : empresaId,
