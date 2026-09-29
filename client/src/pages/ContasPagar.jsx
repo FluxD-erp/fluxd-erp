@@ -10,6 +10,10 @@ import { parseNFe } from '../lib/nfeParser';
 const STATUS_OPTIONS = ['', 'ABERTA', 'PAGA', 'VENCIDA', 'PARCIAL', 'CANCELADA'];
 const FREQUENCIAS = ['SEMANAL','QUINZENAL','MENSAL','BIMESTRAL','TRIMESTRAL','SEMESTRAL','ANUAL'];
 
+// Valor sentinela do <select> para "cadastrar fornecedor agora". Não colide com
+// UUID, então nunca colide com um fornecedor real.
+const NOVO = '__novo__';
+
 function StatusBadge({ status }) {
   const map = {
     ABERTA: 'badge-pendente', PAGA: 'badge-pago', VENCIDA: 'badge-vencido',
@@ -22,6 +26,7 @@ function FormConta({ onSave, onClose, fornecedores, planoContas, conta }) {
   const editando = !!conta;
   const [form, setForm] = useState({
     fornecedor_id  : conta?.fornecedor_id   || '',
+    fornecedor_novo: '',
     descricao      : conta?.descricao       || '',
     valor_original : conta?.valor_original  || '',
     data_emissao   : conta?.data_emissao    || new Date().toISOString().split('T')[0],
@@ -36,19 +41,29 @@ function FormConta({ onSave, onClose, fornecedores, planoContas, conta }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // "novo" = optou por cadastrar um fornecedor na hora (ex.: cartão de crédito,
+  // que não tem fornecedor cadastrado). Mesmo caminho usado na importação.
+  const usandoNovo = form.fornecedor_id === NOVO;
+  const fornecedorOk = usandoNovo ? !!form.fornecedor_novo.trim() : !!form.fornecedor_id;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.fornecedor_id || !form.descricao || !form.valor_original || !form.data_vencimento)
+    if (!fornecedorOk || !form.descricao || !form.valor_original || !form.data_vencimento)
       return toast.error('Preencha todos os campos obrigatórios');
     try {
+      const fornecedor = usandoNovo
+        ? { fornecedor_id: '', fornecedor_novo: { nome: form.fornecedor_novo.trim() } }
+        : { fornecedor_id: form.fornecedor_id };
+
       if (editando) {
         await api.financeiro.atualizarContaPagar(conta.id, {
-          ...form, valor_original: parseFloat(form.valor_original),
+          ...form, ...fornecedor,
+          valor_original: parseFloat(form.valor_original),
         });
         toast.success('Conta atualizada!');
       } else {
         const payload = {
-          ...form,
+          ...form, ...fornecedor,
           valor_original: parseFloat(form.valor_original),
           parcelado   : modo === 'parcelado',
           recorrente  : modo === 'recorrente',
@@ -124,7 +139,18 @@ function FormConta({ onSave, onClose, fornecedores, planoContas, conta }) {
           <select className="input" value={form.fornecedor_id} onChange={e => set('fornecedor_id', e.target.value)} required>
             <option value="">Selecione...</option>
             {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            <option value={NOVO}>+ Cadastrar novo fornecedor</option>
           </select>
+          {usandoNovo && (
+            <input
+              className="input mt-2"
+              value={form.fornecedor_novo}
+              onChange={e => set('fornecedor_novo', e.target.value)}
+              placeholder="Ex.: Cartão Nubank, Cartão Inter"
+              autoFocus
+              required
+            />
+          )}
         </div>
         <div className="sm:col-span-2">
           <label className="label">Descrição *</label>

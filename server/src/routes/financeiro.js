@@ -51,6 +51,28 @@ function gerarParcelas(base, numParcelas, frequencia, empresaId) {
   }));
 }
 
+/**
+ * Resolve o id do fornecedor, criando-o quando necessário.
+ * Aceita um fornecedor já existente (fornecedor_id) ou um novo informado
+ * como { nome, cnpj } — mesmo contrato usado pela importação de NF/CSV.
+ */
+async function resolverFornecedor(fornecedor_id, fornecedor_novo, empresaId) {
+  if (fornecedor_id) return fornecedor_id;
+  if (!fornecedor_novo?.nome) return null;
+
+  const { data, error } = await db.from('fornecedores').insert({
+    nome        : fornecedor_novo.nome,
+    razao_social: fornecedor_novo.nome,
+    cpf_cnpj    : fornecedor_novo.cnpj || null,
+    tipo        : 'PJ',
+    empresa_id  : empresaId,
+    ativo       : true,
+  }).select().single();
+
+  if (error) throw new Error(`Erro ao criar fornecedor: ${error.message}`);
+  return data.id;
+}
+
 // ----------------------------------------------------------------
 // LANÇAMENTOS
 // ----------------------------------------------------------------
@@ -254,13 +276,18 @@ router.get('/contas-pagar', async (req, res) => {
 
 router.post('/contas-pagar', async (req, res) => {
   try {
-    const { fornecedor_id, descricao, valor_original, data_emissao, data_vencimento,
+    const { fornecedor_id, fornecedor_novo, descricao, valor_original, data_emissao, data_vencimento,
       numero_documento, conta_id, observacao,
       parcelado, num_parcelas, frequencia,
       recorrente } = req.body;
 
+    const fornId = await resolverFornecedor(fornecedor_id, fornecedor_novo, req.empresaId);
+    if (!fornId) {
+      return res.status(400).json({ error: 'Selecione um fornecedor ou informe um novo.' });
+    }
+
     const base = {
-      fornecedor_id, descricao, valor_original: parseFloat(valor_original),
+      fornecedor_id: fornId, descricao, valor_original: parseFloat(valor_original),
       data_emissao, data_vencimento, numero_documento, conta_id: conta_id || null, observacao,
     };
 
@@ -351,11 +378,19 @@ router.patch('/contas-pagar/:id/pagar', async (req, res) => {
 
 router.put('/contas-pagar/:id', async (req, res) => {
   try {
-    const { fornecedor_id, descricao, valor_original, data_emissao, data_vencimento,
+    const { fornecedor_id, fornecedor_novo, descricao, valor_original, data_emissao, data_vencimento,
       data_pagamento, valor_pago, status, numero_documento, conta_id, observacao } = req.body;
 
+    const fornId = fornecedor_id
+      ? fornecedor_id
+      : await resolverFornecedor(fornecedor_id, fornecedor_novo, req.empresaId);
+
+    if (!fornId) {
+      return res.status(400).json({ error: 'Selecione um fornecedor ou informe um novo.' });
+    }
+
     const updated = {
-      fornecedor_id, descricao, valor_original, data_emissao, data_vencimento,
+      fornecedor_id: fornId, descricao, valor_original, data_emissao, data_vencimento,
       data_pagamento : data_pagamento || null,
       valor_pago     : valor_pago || 0,
       status, numero_documento, conta_id: conta_id || null, observacao,
@@ -897,16 +932,7 @@ router.post('/importar-nf', async (req, res) => {
 
     // Cria fornecedor automaticamente se não existir
     if (!fornId && fornecedor_novo?.nome) {
-      const { data: forn, error: eForn } = await db.from('fornecedores').insert({
-        nome        : fornecedor_novo.nome,
-        razao_social: fornecedor_novo.nome,
-        cpf_cnpj    : fornecedor_novo.cnpj || null,
-        tipo        : 'PJ',
-        empresa_id  : req.empresaId,
-        ativo       : true,
-      }).select().single();
-      if (eForn) throw new Error(`Erro ao criar fornecedor: ${eForn.message}`);
-      fornId = forn.id;
+      fornId = await resolverFornecedor(fornecedor_id, fornecedor_novo, req.empresaId);
     }
 
     if (!fornId) return res.status(400).json({ error: 'Fornecedor não identificado.' });
