@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 const AuthContext = createContext(null);
@@ -14,6 +14,9 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading]       = useState(true);
   const [loadingEmpresas, setLoadingEmpresas] = useState(false);
+
+  // Evita initUser em paralelo (ex: SIGNED_IN + USER_UPDATED em sequência)
+  const initInFlight = useRef(false);
 
   /** Persiste a empresa ativa e atualiza o estado */
   const setEmpresaAtiva = useCallback((empresa) => {
@@ -80,9 +83,15 @@ export function AuthProvider({ children }) {
 
   /** Carrega perfil + empresas e finaliza o loading */
   async function initUser(userId) {
-    const prof = await fetchProfile(userId);
-    setLoading(false);
-    if (prof) await fetchEmpresas();
+    if (initInFlight.current) return;
+    initInFlight.current = true;
+    try {
+      const prof = await fetchProfile(userId);
+      setLoading(false);
+      if (prof) await fetchEmpresas();
+    } finally {
+      initInFlight.current = false;
+    }
   }
 
   useEffect(() => {
@@ -95,6 +104,28 @@ export function AuthProvider({ children }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        // Eventos que NÃO precisam recarregar perfil/empresas:
+        //  - INITIAL_SESSION: já tratado pelo getSession() no mount
+        //  - TOKEN_REFRESHED: só atualizou o token; perfil/empresas não mudaram
+        if (event === 'INITIAL_SESSION') return;
+
+        if (event === 'TOKEN_REFRESHED') {
+          // Só redireciona se a sessão realmente se perdeu. Race condition comum
+          // é o evento chegar antes da sessão renovada — se já temos user em
+          // memória, ignora. Caso contrário, trata como SIGNED_OUT.
+          if (!session && !user) {
+            setUser(null);
+            setProfile(null);
+            setEmpresas([]);
+            setEmpresaAtiva(null);
+            setLoading(false);
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+              window.location.href = '/login';
+            }
+          }
+          return;
+        }
+
         const u = session?.user ?? null;
         setUser(u);
         if (u) initUser(u.id);
@@ -103,8 +134,8 @@ export function AuthProvider({ children }) {
           setEmpresas([]);
           setEmpresaAtiva(null);
           setLoading(false);
-          // Sessão expirada ou inválida — redireciona para login
-          if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
+          // Sessão expirada ou logout — redireciona para login
+          if (event === 'SIGNED_OUT') {
             window.location.href = '/login';
           }
         }
