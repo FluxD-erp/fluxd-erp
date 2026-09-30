@@ -126,18 +126,18 @@ export function AuthProvider({ children }) {
         if (event === 'INITIAL_SESSION') return;
 
         if (event === 'TOKEN_REFRESHED') {
-          // Só redireciona se a sessão realmente se perdeu. Race condition comum
-          // é o evento chegar antes da sessão renovada — se já temos user em
-          // memória, ignora. Caso contrário, trata como SIGNED_OUT.
+          // Só atualiza o estado se a sessão realmente se perdeu. Race
+          // condition comum é o evento chegar antes da sessão renovada
+          // — se já temos user em memória, ignora. Caso contrário,
+          // limpa o estado e deixa o ProtectedRoute redirecionar via
+          // React Router (sem window.location.href, que recarregava a
+          // aba quando o token expirava em background por inatividade).
           if (!session && !user) {
             setUser(null);
             setProfile(null);
             setEmpresas([]);
             setEmpresaAtiva(null);
             setLoading(false);
-            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-              window.location.href = '/login';
-            }
           }
           return;
         }
@@ -150,10 +150,10 @@ export function AuthProvider({ children }) {
           setEmpresas([]);
           setEmpresaAtiva(null);
           setLoading(false);
-          // Sessão expirada ou logout — redireciona para login
-          if (event === 'SIGNED_OUT') {
-            window.location.href = '/login';
-          }
+          // Sessão expirada ou logout: o ProtectedRoute detecta !user
+          // e redireciona via <Navigate to="/login" />. Não usamos
+          // window.location.href aqui — isso disparava reload da aba
+          // quando o Supabase detectava expiração por inatividade de aba.
         }
       }
     );
