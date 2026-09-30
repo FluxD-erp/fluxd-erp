@@ -6,7 +6,13 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' = não força reload quando há update; aplica no próximo
+      // carregamento natural. Resolve o bug em que trocar de aba por
+      // alguns minutos disparava location.reload() via autoUpdate.
+      registerType: 'prompt',
+      // 'null' = não injeta <script> no HTML; importamos manualmente do
+      // main.jsx para usar nossa versão customizada do registerSW.js.
+      injectRegister: null,
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: {
         name: 'FluxD — Sistema Financeiro',
