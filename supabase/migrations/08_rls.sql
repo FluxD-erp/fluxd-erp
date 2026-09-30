@@ -3,19 +3,25 @@
 -- Dependencias: tabela usuarios_empresas (empresa_id, user_id, perfil, ativo)
 
 -- Helper: IDs de empresa que o usuario autenticado tem acesso ativo
-CREATE OR REPLACE FUNCTION auth.empresas_do_usuario()
+-- Fica em public, e nao em auth: o schema auth e gerenciado pelo Supabase e
+-- nao aceita CREATE de fora (erro 42501 permission denied for schema auth).
+-- auth.uid() continua acessivel normalmente de dentro de public.
+CREATE OR REPLACE FUNCTION public.empresas_do_usuario()
 RETURNS SETOF uuid
 LANGUAGE sql STABLE SECURITY DEFINER
 AS $$
-  SELECT empresa_id FROM usuarios_empresas
+  SELECT empresa_id FROM public.usuarios_empresas
   WHERE user_id = auth.uid() AND ativo = true;
 $$;
+
+REVOKE ALL ON FUNCTION public.empresas_do_usuario() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.empresas_do_usuario() TO authenticated;
 
 -- EMPRESAS
 ALTER TABLE empresas ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "empresas_select" ON empresas;
 CREATE POLICY "empresas_select" ON empresas
-  FOR SELECT USING (id IN (SELECT auth.empresas_do_usuario()));
+  FOR SELECT USING (id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "empresas_update" ON empresas;
 CREATE POLICY "empresas_update" ON empresas
   FOR UPDATE USING (id IN (
@@ -27,7 +33,7 @@ CREATE POLICY "empresas_update" ON empresas
 ALTER TABLE usuarios_empresas ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "eu_select" ON usuarios_empresas;
 CREATE POLICY "eu_select" ON usuarios_empresas
-  FOR SELECT USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR SELECT USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "eu_insert" ON usuarios_empresas;
 CREATE POLICY "eu_insert" ON usuarios_empresas
   FOR INSERT WITH CHECK (empresa_id IN (
@@ -45,82 +51,82 @@ CREATE POLICY "eu_update" ON usuarios_empresas
 ALTER TABLE lancamentos ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "lanc_select" ON lancamentos;
 CREATE POLICY "lanc_select" ON lancamentos
-  FOR SELECT USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR SELECT USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "lanc_insert" ON lancamentos;
 CREATE POLICY "lanc_insert" ON lancamentos
-  FOR INSERT WITH CHECK (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR INSERT WITH CHECK (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "lanc_update" ON lancamentos;
 CREATE POLICY "lanc_update" ON lancamentos
-  FOR UPDATE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR UPDATE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "lanc_delete" ON lancamentos;
 CREATE POLICY "lanc_delete" ON lancamentos
-  FOR DELETE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR DELETE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 
 -- CONTAS_PAGAR
 ALTER TABLE contas_pagar ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "cp_select" ON contas_pagar;
 CREATE POLICY "cp_select" ON contas_pagar
-  FOR SELECT USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR SELECT USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "cp_insert" ON contas_pagar;
 CREATE POLICY "cp_insert" ON contas_pagar
-  FOR INSERT WITH CHECK (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR INSERT WITH CHECK (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "cp_update" ON contas_pagar;
 CREATE POLICY "cp_update" ON contas_pagar
-  FOR UPDATE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR UPDATE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "cp_delete" ON contas_pagar;
 CREATE POLICY "cp_delete" ON contas_pagar
-  FOR DELETE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR DELETE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 
 -- CONTAS_RECEBER
 ALTER TABLE contas_receber ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "cr_select" ON contas_receber;
 CREATE POLICY "cr_select" ON contas_receber
-  FOR SELECT USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR SELECT USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "cr_insert" ON contas_receber;
 CREATE POLICY "cr_insert" ON contas_receber
-  FOR INSERT WITH CHECK (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR INSERT WITH CHECK (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "cr_update" ON contas_receber;
 CREATE POLICY "cr_update" ON contas_receber
-  FOR UPDATE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR UPDATE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "cr_delete" ON contas_receber;
 CREATE POLICY "cr_delete" ON contas_receber
-  FOR DELETE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR DELETE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 
 -- CLIENTES
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "cli_select" ON clientes;
 CREATE POLICY "cli_select" ON clientes
-  FOR SELECT USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR SELECT USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "cli_insert" ON clientes;
 CREATE POLICY "cli_insert" ON clientes
-  FOR INSERT WITH CHECK (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR INSERT WITH CHECK (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "cli_update" ON clientes;
 CREATE POLICY "cli_update" ON clientes
-  FOR UPDATE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR UPDATE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "cli_delete" ON clientes;
 CREATE POLICY "cli_delete" ON clientes
-  FOR DELETE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR DELETE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 
 -- FORNECEDORES
 ALTER TABLE fornecedores ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "forn_select" ON fornecedores;
 CREATE POLICY "forn_select" ON fornecedores
-  FOR SELECT USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR SELECT USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "forn_insert" ON fornecedores;
 CREATE POLICY "forn_insert" ON fornecedores
-  FOR INSERT WITH CHECK (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR INSERT WITH CHECK (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "forn_update" ON fornecedores;
 CREATE POLICY "forn_update" ON fornecedores
-  FOR UPDATE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR UPDATE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "forn_delete" ON fornecedores;
 CREATE POLICY "forn_delete" ON fornecedores
-  FOR DELETE USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR DELETE USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 
 -- PLANO_CONTAS — leitura por empresa, escrita so ADMIN
 ALTER TABLE plano_contas ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "pc_select" ON plano_contas;
 CREATE POLICY "pc_select" ON plano_contas
-  FOR SELECT USING (empresa_id IN (SELECT auth.empresas_do_usuario()));
+  FOR SELECT USING (empresa_id IN (SELECT public.empresas_do_usuario()));
 DROP POLICY IF EXISTS "pc_write" ON plano_contas;
 CREATE POLICY "pc_write" ON plano_contas
   FOR ALL USING (empresa_id IN (
