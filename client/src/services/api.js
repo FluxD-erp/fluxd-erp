@@ -2,6 +2,15 @@ import { supabase } from '../lib/supabase';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api';
 
+/** Erro HTTP tipado — carrega o status para o caller decidir como reagir */
+export class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 /** Retorna headers com JWT + empresa ativa */
 async function buildHeaders(extra = {}) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -35,11 +44,19 @@ async function req(path, options = {}) {
   });
   if (!res.ok) {
     if (res.status === 401) {
-      window.location.href = '/login';
-      throw new Error('Sessão expirada.');
+      // Sessão expirada: avisa o AuthProvider via evento customizado.
+      // Não usamos window.location.href aqui — isso disparava reload em
+      // toda aba aberta (incluindo outras instâncias do app em outras
+      // abas), o que o usuário via como "pisca ao trocar de aba".
+      // O AuthProvider escuta 'fluxd:auth:expired', limpa o estado local
+      // e chama signOut(); o ProtectedRoute redireciona via React Router.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('fluxd:auth:expired'));
+      }
+      throw new ApiError('Sessão expirada.', 401);
     }
     const err = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-    throw new Error(err.error || `Erro ${res.status}`);
+    throw new ApiError(err.error || `Erro ${res.status}`, res.status);
   }
   return res.json();
 }

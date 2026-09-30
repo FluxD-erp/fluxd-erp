@@ -102,6 +102,22 @@ export function AuthProvider({ children }) {
       else   setLoading(false);
     });
 
+    // Listener para 401 vindo de fetch (services/api.js dispara este evento
+    // quando o backend rejeita o JWT). Evita window.location.href=/login
+    // que causava reload da aba quando o token expirava em background.
+    async function handleSessionExpired() {
+      setProfile(null);
+      setEmpresas([]);
+      setEmpresaAtiva(null);
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // Se signOut falhar, ainda limpamos o estado — UI vai cair no
+        // ProtectedRoute → Navigate to /login via React Router
+      }
+    }
+    window.addEventListener('fluxd:auth:expired', handleSessionExpired);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         // Eventos que NÃO precisam recarregar perfil/empresas:
@@ -142,7 +158,10 @@ export function AuthProvider({ children }) {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('fluxd:auth:expired', handleSessionExpired);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
